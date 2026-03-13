@@ -496,7 +496,7 @@ I built this stack for [Clone (clone.fyi)](https://clone.fyi) and wrote this che
 
 If you're building something that needs to work well with AI agents and want a fast path through this list:
 
-**→ [joey.fyi](https://joey.fyi)** — reach out and let's talk.
+**→ [janisheck.com](https://janisheck.com)** | **[GitHub](https://github.com/jjanisheck)** — reach out and let's talk.
 
 Happy to do a free 30-minute audit call for any app that publishes this checklist and links back to this repo. (Seriously. I want more real-world test cases.)
 

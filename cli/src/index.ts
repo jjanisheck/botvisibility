@@ -67,10 +67,10 @@ ${colors.bold}WHAT WE CHECK${colors.reset}
 
 ${colors.bold}SCORING${colors.reset}
   🔴 Invisible   (0-20%)  - Agents can't find or use you
-  🟠 Findable   (21-40%)  - Agents struggle to use you reliably
-  🟡 Usable     (41-62%)  - Basic tasks work, rough edges remain
+  🟠 Dim        (21-40%)  - Bots know you exist but can barely use you
+  🟡 Visible    (41-62%)  - Bots can find you and handle basic tasks
   🟢 Ready      (63-80%)  - Agents can work with you reliably
-  🚀 Agent-Native (81%+)  - Designed for the agentic era
+  🚀 Beacon     (81%+)   - Maximum bot visibility
 
 ${colors.bold}LEARN MORE${colors.reset}
   https://github.com/joeyjanisheck/agent-readiness-audit
@@ -112,17 +112,17 @@ function printCheck(check: CheckResult | RepoCheckResult) {
 function printResults(result: ScanResult, repoChecks?: RepoCheckResult[]) {
   const tierColors: Record<string, string> = {
     'Invisible': colors.red,
-    'Findable': colors.yellow,
-    'Usable': colors.yellow,
-    'Ready': colors.green,
-    'Agent-Native': colors.magenta,
+    'Dim': colors.yellow,
+    'Visible': colors.yellow,
+    'Clear': colors.green,
+    'Beacon': colors.magenta,
   };
 
   const tierColor = tierColors[result.tier.name] || colors.white;
 
   console.log('');
   console.log(`${colors.bold}═══════════════════════════════════════════════════════${colors.reset}`);
-  console.log(`${colors.bold}  AGENT-READINESS SCAN RESULTS${colors.reset}`);
+  console.log(`${colors.bold}  BOTVISIBILITY SCAN RESULTS${colors.reset}`);
   console.log(`${colors.bold}═══════════════════════════════════════════════════════${colors.reset}`);
   console.log('');
   console.log(`  ${colors.dim}URL:${colors.reset} ${result.url}`);

@@ -1,6 +1,6 @@
 import { Tier } from './types.js';
 
-// Tier definitions based on README scoring
+// BotVisibility tier definitions
 export function getTier(score: number, maxScore: number = 9): Tier {
   const percentage = (score / maxScore) * 100;
 
@@ -9,42 +9,42 @@ export function getTier(score: number, maxScore: number = 9): Tier {
       name: 'Invisible',
       emoji: '🔴',
       color: 'red',
-      description: "Agents can't find you or use you.",
+      description: "Bots can't see you. Zero visibility to AI agents.",
       range: '0-20%'
     };
   }
   if (percentage <= 40) {
     return {
-      name: 'Findable',
+      name: 'Dim',
       emoji: '🟠',
       color: 'orange',
-      description: "Agents know you exist but struggle to use you reliably.",
+      description: "Bots know you exist but can barely use you.",
       range: '21-40%'
     };
   }
   if (percentage <= 62) {
     return {
-      name: 'Usable',
+      name: 'Visible',
       emoji: '🟡',
       color: 'yellow',
-      description: "Agents can accomplish basic tasks. Rough edges remain.",
+      description: "Bots can find you and handle basic tasks.",
       range: '41-62%'
     };
   }
   if (percentage <= 80) {
     return {
-      name: 'Ready',
+      name: 'Clear',
       emoji: '🟢',
       color: 'green',
-      description: "Agents can work with your app reliably.",
+      description: "Bots see you clearly. Ahead of most of the internet.",
       range: '63-80%'
     };
   }
   return {
-    name: 'Agent-Native',
+    name: 'Beacon',
     emoji: '🚀',
     color: 'purple',
-    description: "Your app is designed for the agentic era.",
+    description: "Maximum bot visibility. Agents find you, understand you, prefer you.",
     range: '81-100%'
   };
 }

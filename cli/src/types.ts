@@ -15,7 +15,7 @@ export interface CheckResult {
 }
 
 export interface Tier {
-  name: 'Invisible' | 'Findable' | 'Usable' | 'Ready' | 'Agent-Native';
+  name: 'Invisible' | 'Dim' | 'Visible' | 'Clear' | 'Beacon';
   emoji: string;
   color: string;
   description: string;

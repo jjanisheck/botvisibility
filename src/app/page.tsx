@@ -115,14 +115,13 @@ export default function Home() {
               className="text-3xl md:text-4xl font-bold mb-4 tracking-tight"
               style={{ fontSize: "var(--text-4xl)" }}
             >
-              Agent-Readiness Scanner
+              BotVisibility
             </h1>
             <p
               className="text-lg max-w-xl"
               style={{ color: "var(--text-secondary)", fontSize: "var(--text-lg)" }}
             >
-              Check if your app is ready for AI agents. Scan any URL to see how
-              discoverable, usable, and optimized it is for the agentic era.
+              How visible is your product to AI agents? Scan any URL and find out in seconds.
             </p>
           </header>
 
@@ -257,11 +256,10 @@ export default function Home() {
             {scanState === "idle" && results.length === 0 && (
               <div className="text-center py-12" style={{ color: "var(--text-tertiary)" }}>
                 <p className="text-lg mb-4" style={{ fontSize: "var(--text-lg)" }}>
-                  Enter a URL above to scan for agent-readiness
+                  Enter a URL to check your BotVisibility score
                 </p>
                 <p className="text-sm" style={{ fontSize: "var(--text-sm)" }}>
-                  We&apos;ll check for llms.txt, agent-card.json, OpenAPI specs, and
-                  more
+                  We check for llms.txt, agent-card.json, OpenAPI specs, CORS headers, and more
                 </p>
               </div>
             )}
@@ -278,7 +276,7 @@ export default function Home() {
                 onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
                 onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
               >
-                31-item Agent-Readiness Checklist
+                31-item BotVisibility Checklist
               </a>
               {" · "}
               Built by{" "}
@@ -317,10 +315,10 @@ function ScoreCard({
 }) {
   const tierColorClass = {
     Invisible: "tier-invisible",
-    Findable: "tier-findable",
-    Usable: "tier-usable",
-    Ready: "tier-ready",
-    "Agent-Native": "tier-agent-native",
+    Dim: "tier-findable",
+    Visible: "tier-usable",
+    Clear: "tier-ready",
+    Beacon: "tier-agent-native",
   }[tier.name];
 
   const percentage = Math.round((score / maxScore) * 100);
@@ -347,7 +345,7 @@ function ScoreCard({
           </div>
           <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>auto-detected</p>
           <p className="text-xs mt-1" style={{ color: "var(--text-tertiary)" }}>
-            {percentage}% agent-ready (auto-scan)
+            {percentage}% visible to bots
           </p>
         </div>
       </div>
@@ -478,7 +476,7 @@ function ManualChecksSection({
     1: "Discoverable",
     2: "Usable",
     3: "Optimized",
-    4: "Agent-Native",
+    4: "Beacon",
   };
 
   return (

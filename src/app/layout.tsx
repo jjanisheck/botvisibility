@@ -2,18 +2,18 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Agent-Readiness Scanner | Is your app ready for AI agents?",
+  title: "BotVisibility | How visible is your product to AI agents?",
   description:
-    "Scan any URL to check if it's ready for AI agents. We check for llms.txt, agent-card.json, OpenAPI specs, and 30+ other agent-readiness signals.",
+    "Scan any URL and get your BotVisibility score in seconds. We check for llms.txt, agent-card.json, OpenAPI specs, CORS headers, and more.",
   openGraph: {
-    title: "Agent-Readiness Scanner",
-    description: "Scan any URL to check if it's ready for AI agents. llms.txt, agent-card.json, OpenAPI specs, and more.",
+    title: "BotVisibility",
+    description: "How visible is your product to AI agents? Scan any URL and find out.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Agent-Readiness Scanner",
-    description: "Scan any URL to check if it's ready for AI agents. llms.txt, agent-card.json, OpenAPI specs, and more.",
+    title: "BotVisibility",
+    description: "How visible is your product to AI agents? Scan any URL and find out.",
   },
 };
 

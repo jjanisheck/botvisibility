@@ -1,7 +1,8 @@
 import { CheckResult, Tier, ManualCheck } from './types';
 
-// Tier definitions based on README scoring
-export function getTier(score: number, maxScore: number = 31): Tier {
+// Tier definitions — scores auto-checks on their own scale
+// Manual checks are bonus, not penalty
+export function getTier(score: number, maxScore: number = 9): Tier {
   const percentage = (score / maxScore) * 100;
 
   if (percentage <= 20) {

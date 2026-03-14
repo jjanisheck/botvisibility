@@ -88,13 +88,13 @@ export async function GET(request: NextRequest) {
 
       // Calculate final score and tier
       const score = calculateScore(checks);
-      const tier = getTier(score, 31); // 31 total items
+      const tier = getTier(score, checks.length); // 31 total items
 
       const finalResult: ScanResult = {
         url: baseUrl,
         timestamp: new Date().toISOString(),
         score,
-        maxScore: 31,
+        maxScore: checks.length,
         tier,
         checks,
         manualChecks: MANUAL_CHECKS
@@ -151,13 +151,13 @@ export async function POST(request: NextRequest) {
     ]);
 
     const score = calculateScore(checks);
-    const tier = getTier(score, 31);
+    const tier = getTier(score, checks.length);
 
     const result: ScanResult = {
       url: baseUrl,
       timestamp: new Date().toISOString(),
       score,
-      maxScore: 31,
+      maxScore: checks.length,
       tier,
       checks,
       manualChecks: MANUAL_CHECKS

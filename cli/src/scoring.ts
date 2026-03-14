@@ -1,7 +1,7 @@
 import { Tier } from './types.js';
 
 // Tier definitions based on README scoring
-export function getTier(score: number, maxScore: number = 31): Tier {
+export function getTier(score: number, maxScore: number = 9): Tier {
   const percentage = (score / maxScore) * 100;
 
   if (percentage <= 20) {

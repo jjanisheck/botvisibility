@@ -233,13 +233,13 @@ async function main() {
   // Run URL checks
   const checks = await runAllChecks(baseUrl);
   const score = checks.filter(c => c.passed).length;
-  const tier = getTier(score, 31);
+  const tier = getTier(score, checks.length);
 
   const result: ScanResult = {
     url: baseUrl,
     timestamp: new Date().toISOString(),
     score,
-    maxScore: 31,
+    maxScore: checks.length,
     tier,
     checks
   };

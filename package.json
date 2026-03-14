@@ -1,12 +1,14 @@
 {
-  "name": "app",
-  "version": "0.1.0",
+  "name": "agent-readiness-audit-web",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cli:build": "cd cli && npm run build",
+    "cli:dev": "cd cli && npm run dev"
   },
   "dependencies": {
     "next": "16.1.6",

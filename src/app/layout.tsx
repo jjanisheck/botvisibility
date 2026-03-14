@@ -8,18 +8,18 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Agent-Readiness Audit | Is your app ready for AI agents?",
+  title: "Agent-Readiness Scanner | Is your app ready for AI agents?",
   description:
-    "Score your app across 31 items to see how ready it is for the age of AI agents. From discoverable to agent-native.",
+    "Scan any URL to check if it's ready for AI agents. We check for llms.txt, agent-card.json, OpenAPI specs, and 30+ other agent-readiness signals.",
   openGraph: {
-    title: "Agent-Readiness Audit",
-    description: "Is your app ready for the age of AI agents? Score yourself and find out.",
+    title: "Agent-Readiness Scanner",
+    description: "Scan any URL to check if it's ready for AI agents. llms.txt, agent-card.json, OpenAPI specs, and more.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Agent-Readiness Audit",
-    description: "Is your app ready for the age of AI agents? Score yourself and find out.",
+    title: "Agent-Readiness Scanner",
+    description: "Scan any URL to check if it's ready for AI agents. llms.txt, agent-card.json, OpenAPI specs, and more.",
   },
 };
 

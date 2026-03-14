@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useCallback, useId } from "react";
+import { useState, useCallback, useId, useEffect, useRef } from "react";
 import { CheckResult, ScanResult, ManualCheck, Tier } from "@/lib/types";
 
 type ScanState = "idle" | "scanning" | "complete" | "error";
 
 // ============================================
-// SPINNER COMPONENT — Extracted, not duplicated
+// SPINNER COMPONENT
 // ============================================
 function Spinner({ size = 20, className = "" }: { size?: number; className?: string }) {
   return (
@@ -36,6 +36,205 @@ function Spinner({ size = 20, className = "" }: { size?: number; className?: str
 }
 
 // ============================================
+// CIRCULAR PROGRESS RING
+// ============================================
+function CircularProgress({
+  progress,
+  size = 80,
+  strokeWidth = 6
+}: {
+  progress: number;
+  size?: number;
+  strokeWidth?: number;
+}) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (progress / 100) * circumference;
+
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <svg
+        className="progress-ring progress-ring-glow"
+        width={size}
+        height={size}
+      >
+        <circle
+          className="progress-ring-background"
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+        />
+        <circle
+          className="progress-ring-progress"
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 0.5s ease-out" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-lg font-bold" style={{ color: "var(--accent-primary)" }}>
+          {Math.round(progress)}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// ANIMATED COUNTER
+// ============================================
+function AnimatedCounter({ value, duration = 1000 }: { value: number; duration?: number }) {
+  const [displayValue, setDisplayValue] = useState(0);
+  const startTime = useRef<number | null>(null);
+  const animationFrame = useRef<number | null>(null);
+
+  useEffect(() => {
+    startTime.current = null;
+
+    const animate = (timestamp: number) => {
+      if (!startTime.current) startTime.current = timestamp;
+      const progress = Math.min((timestamp - startTime.current) / duration, 1);
+
+      // Ease out cubic
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+      setDisplayValue(Math.round(easeOut * value));
+
+      if (progress < 1) {
+        animationFrame.current = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrame.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrame.current) {
+        cancelAnimationFrame(animationFrame.current);
+      }
+    };
+  }, [value, duration]);
+
+  return <span className="score-counter">{displayValue}</span>;
+}
+
+// ============================================
+// CONFETTI EFFECT
+// ============================================
+function Confetti({ active }: { active: boolean }) {
+  const [particles, setParticles] = useState<Array<{
+    id: number;
+    x: number;
+    color: string;
+    delay: number;
+    size: number;
+  }>>([]);
+
+  useEffect(() => {
+    if (active) {
+      const colors = [
+        "oklch(0.72 0.20 145)", // green
+        "oklch(0.70 0.22 300)", // purple
+        "oklch(0.80 0.16 85)",  // gold
+        "oklch(0.75 0.18 200)", // cyan
+        "oklch(0.72 0.20 30)",  // coral
+      ];
+
+      const newParticles = Array.from({ length: 50 }, (_, i) => ({
+        id: i,
+        x: Math.random() * 100,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        delay: Math.random() * 500,
+        size: 6 + Math.random() * 8,
+      }));
+
+      setParticles(newParticles);
+
+      // Clear after animation
+      const timer = setTimeout(() => setParticles([]), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [active]);
+
+  if (!active && particles.length === 0) return null;
+
+  return (
+    <div className="confetti-container" aria-hidden="true">
+      {particles.map((p) => (
+        <div
+          key={p.id}
+          className="confetti-piece"
+          style={{
+            left: `${p.x}%`,
+            backgroundColor: p.color,
+            width: p.size,
+            height: p.size,
+            animationDelay: `${p.delay}ms`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ============================================
+// GHOST ICON FOR INVISIBLE TIER
+// ============================================
+function GhostIcon({ size = 48 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className="ghost-icon"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 2C7.58 2 4 5.58 4 10v9c0 .55.45 1 1 1s1-.45 1-1v-1c0-.55.45-1 1-1s1 .45 1 1v1c0 .55.45 1 1 1s1-.45 1-1v-1c0-.55.45-1 1-1s1 .45 1 1v1c0 .55.45 1 1 1s1-.45 1-1v-1c0-.55.45-1 1-1s1 .45 1 1v1c0 .55.45 1 1 1s1-.45 1-1v-9c0-4.42-3.58-8-8-8z"
+        fill="currentColor"
+        opacity="0.9"
+      />
+      <circle cx="9" cy="10" r="1.5" fill="var(--bg-primary)" />
+      <circle cx="15" cy="10" r="1.5" fill="var(--bg-primary)" />
+    </svg>
+  );
+}
+
+// ============================================
+// TIER BADGE COMPONENT
+// ============================================
+function TierBadge({ tier, animated = true }: { tier: Tier; animated?: boolean }) {
+  const badgeClass = {
+    Invisible: "tier-badge-invisible",
+    Dim: "tier-badge-dim",
+    Visible: "tier-badge-visible",
+    Clear: "tier-badge-clear",
+    Beacon: "tier-badge-beacon",
+  }[tier.name];
+
+  const tierColorClass = {
+    Invisible: "tier-invisible",
+    Dim: "tier-dim",
+    Visible: "tier-visible",
+    Clear: "tier-clear",
+    Beacon: "tier-beacon",
+  }[tier.name];
+
+  return (
+    <div className={`tier-badge ${badgeClass} ${animated ? "animate-badge-reveal" : ""}`}>
+      {tier.name === "Invisible" ? (
+        <GhostIcon size={32} />
+      ) : (
+        <span className="text-3xl mr-2" aria-hidden="true">{tier.emoji}</span>
+      )}
+      <span className={tierColorClass}>{tier.name}</span>
+    </div>
+  );
+}
+
+// ============================================
 // MAIN PAGE COMPONENT
 // ============================================
 export default function Home() {
@@ -45,6 +244,7 @@ export default function Home() {
   const [results, setResults] = useState<CheckResult[]>([]);
   const [finalResult, setFinalResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const inputId = useId();
   const errorId = useId();
@@ -57,6 +257,7 @@ export default function Home() {
     setFinalResult(null);
     setError(null);
     setCurrentCheck(null);
+    setShowConfetti(false);
 
     try {
       const eventSource = new EventSource(
@@ -79,6 +280,11 @@ export default function Home() {
         setFinalResult(data);
         setScanState("complete");
         eventSource.close();
+
+        // Trigger confetti for Clear or Beacon tier
+        if (data.tier.name === "Clear" || data.tier.name === "Beacon") {
+          setShowConfetti(true);
+        }
       });
 
       eventSource.onerror = () => {
@@ -106,6 +312,9 @@ export default function Home() {
       <a href="#main-content" className="skip-link">
         Skip to main content
       </a>
+
+      {/* Confetti overlay */}
+      <Confetti active={showConfetti} />
 
       <div className="min-h-screen" style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}>
         <div className="max-w-3xl mx-auto px-4 py-8 md:py-16">
@@ -152,53 +361,67 @@ export default function Home() {
                   <button
                     type="submit"
                     disabled={scanState === "scanning" || !url.trim()}
-                    className="btn-primary flex items-center justify-center gap-2 min-w-[120px]"
+                    className={`btn-primary flex items-center justify-center gap-2 min-w-[140px] ${
+                      scanState === "idle" && url.trim() ? "btn-scan" : ""
+                    }`}
                   >
                     {scanState === "scanning" ? (
                       <>
                         <Spinner size={18} />
-                        <span>Scanning</span>
+                        <span>Scanning...</span>
                       </>
                     ) : (
-                      "Scan URL"
+                      <>
+                        <span className="text-lg">&#128269;</span>
+                        <span>Scan URL</span>
+                      </>
                     )}
                   </button>
                 </div>
               </div>
             </form>
 
-            {/* Error State — Associated with input */}
+            {/* Error State */}
             {error && (
               <div
                 id={errorId}
                 role="alert"
-                className="mb-8 p-4 rounded-lg card-fail"
+                className="mb-8 p-4 rounded-lg card-fail animate-slide-in"
               >
                 {error}
               </div>
             )}
 
-            {/* Progress indicator — Accessible */}
+            {/* Progress indicator with circular ring */}
             {scanState === "scanning" && (
-              <div className="mb-8" aria-live="polite" aria-atomic="true">
-                <div
-                  className="progress-bar mb-2"
-                  role="progressbar"
-                  aria-valuenow={progressPercent}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label="Scan progress"
-                >
+              <div className="mb-8 flex flex-col items-center gap-4" aria-live="polite" aria-atomic="true">
+                <CircularProgress progress={progressPercent} size={100} />
+
+                <div className="w-full max-w-md">
                   <div
-                    className="progress-bar-fill"
-                    style={{ width: `${progressPercent}%` }}
-                  />
+                    className="progress-bar"
+                    role="progressbar"
+                    aria-valuenow={progressPercent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label="Scan progress"
+                  >
+                    <div
+                      className="progress-bar-fill"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
                 </div>
+
                 {currentCheck && (
-                  <p className="text-sm animate-pulse" style={{ color: "var(--text-secondary)" }}>
-                    Checking {currentCheck}...
+                  <p className="text-base animate-pulse" style={{ color: "var(--accent-primary)" }}>
+                    Checking <span className="font-semibold">{currentCheck}</span>...
                   </p>
                 )}
+
+                <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+                  {results.length} of {totalChecks} checks complete
+                </p>
               </div>
             )}
 
@@ -228,8 +451,12 @@ export default function Home() {
                       {results.length} passed)
                     </h2>
                     <div className="space-y-3" role="list" aria-live="polite">
-                      {results.map((result) => (
-                        <CheckResultCard key={result.id} result={result} />
+                      {results.map((result, index) => (
+                        <CheckResultCard
+                          key={result.id}
+                          result={result}
+                          index={index}
+                        />
                       ))}
                       {currentCheck && (
                         <div
@@ -255,6 +482,9 @@ export default function Home() {
             {/* Empty state */}
             {scanState === "idle" && results.length === 0 && (
               <div className="text-center py-12" style={{ color: "var(--text-tertiary)" }}>
+                <div className="mb-6 animate-float">
+                  <span className="text-6xl">&#128373;</span>
+                </div>
                 <p className="text-lg mb-4" style={{ fontSize: "var(--text-lg)" }}>
                   Enter a URL to check your BotVisibility score
                 </p>
@@ -298,7 +528,7 @@ export default function Home() {
 }
 
 // ============================================
-// SCORE CARD COMPONENT
+// SCORE CARD COMPONENT — Game-like presentation
 // ============================================
 function ScoreCard({
   score,
@@ -313,40 +543,71 @@ function ScoreCard({
   autoChecks: number;
   totalAutoChecks: number;
 }) {
+  const cardClass = {
+    Invisible: "score-card-invisible",
+    Dim: "score-card-dim",
+    Visible: "score-card-visible",
+    Clear: "score-card-clear",
+    Beacon: "score-card-beacon",
+  }[tier.name];
+
   const tierColorClass = {
     Invisible: "tier-invisible",
-    Dim: "tier-findable",
-    Visible: "tier-usable",
-    Clear: "tier-ready",
-    Beacon: "tier-agent-native",
+    Dim: "tier-dim",
+    Visible: "tier-visible",
+    Clear: "tier-clear",
+    Beacon: "tier-beacon",
   }[tier.name];
 
   const percentage = Math.round((score / maxScore) * 100);
 
   return (
-    <section aria-labelledby="score-heading" className="card animate-slide-in">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-4xl" aria-hidden="true">{tier.emoji}</span>
-            <div>
-              <h2 id="score-heading" className={`text-2xl font-bold ${tierColorClass}`}>
-                {tier.name}
-              </h2>
-              <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>{tier.range}</p>
-            </div>
-          </div>
-          <p style={{ color: "var(--text-secondary)" }}>{tier.description}</p>
+    <section
+      aria-labelledby="score-heading"
+      className={`card score-card ${cardClass} animate-scale-in`}
+    >
+      {/* Main score display */}
+      <div className="text-center mb-6">
+        <div className="mb-4">
+          <TierBadge tier={tier} />
         </div>
-        <div className="text-right">
-          <div className="text-4xl font-bold" style={{ fontSize: "var(--text-4xl)" }}>
-            {autoChecks}
-            <span style={{ color: "var(--text-tertiary)" }}>/{totalAutoChecks}</span>
-          </div>
-          <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>auto-detected</p>
-          <p className="text-xs mt-1" style={{ color: "var(--text-tertiary)" }}>
-            {percentage}% visible to bots
-          </p>
+
+        <div className={`score-display ${tierColorClass} mb-2`}>
+          <AnimatedCounter value={autoChecks} duration={1500} />
+          <span style={{ opacity: 0.5 }}>/{totalAutoChecks}</span>
+        </div>
+
+        <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+          automated checks passed
+        </p>
+      </div>
+
+      {/* Tier info */}
+      <div className="text-center mb-6 pt-6" style={{ borderTop: "1px solid var(--border-primary)" }}>
+        <p className="text-sm mb-1" style={{ color: "var(--text-tertiary)" }}>
+          {tier.range}
+        </p>
+        <p style={{ color: "var(--text-secondary)" }}>{tier.description}</p>
+      </div>
+
+      {/* Visibility percentage bar */}
+      <div className="pt-4" style={{ borderTop: "1px solid var(--border-primary)" }}>
+        <div className="flex justify-between mb-2">
+          <span className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+            Bot Visibility
+          </span>
+          <span className={`text-sm font-bold ${tierColorClass}`}>
+            {percentage}%
+          </span>
+        </div>
+        <div className="progress-bar" style={{ height: "12px" }}>
+          <div
+            className="progress-bar-fill animate-progress-pulse"
+            style={{
+              width: `${percentage}%`,
+              animationDelay: "500ms"
+            }}
+          />
         </div>
       </div>
     </section>
@@ -354,16 +615,16 @@ function ScoreCard({
 }
 
 // ============================================
-// CHECK RESULT CARD — Keyboard accessible
+// CHECK RESULT CARD — With micro-interactions
 // ============================================
-function CheckResultCard({ result }: { result: CheckResult }) {
+function CheckResultCard({ result, index }: { result: CheckResult; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const contentId = useId();
 
   const statusIcon = {
-    pass: "✓",
-    fail: "✗",
-    partial: "◐",
+    pass: "&#10003;",
+    fail: "&#10007;",
+    partial: "&#9684;",
     unknown: "?",
   }[result.status];
 
@@ -382,7 +643,11 @@ function CheckResultCard({ result }: { result: CheckResult }) {
   }[result.status];
 
   return (
-    <div className={`p-4 rounded-lg animate-slide-in ${cardClass}`} role="listitem">
+    <div
+      className={`p-4 rounded-lg check-card animate-slide-in-right ${cardClass}`}
+      role="listitem"
+      style={{ animationDelay: `${index * 50}ms` }}
+    >
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -390,9 +655,12 @@ function CheckResultCard({ result }: { result: CheckResult }) {
         aria-controls={contentId}
         className="w-full text-left flex items-start gap-3 bg-transparent border-none cursor-pointer"
       >
-        <span className={`text-lg font-bold ${statusColorClass}`} aria-hidden="true">
-          {statusIcon}
-        </span>
+        <span
+          className={`text-xl font-bold check-icon ${statusColorClass} ${result.passed ? 'animate-check-pop' : ''}`}
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: statusIcon }}
+          style={{ animationDelay: `${index * 50 + 200}ms` }}
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium">{result.name}</span>
@@ -411,16 +679,16 @@ function CheckResultCard({ result }: { result: CheckResult }) {
           </p>
         </div>
         <span
-          className="text-sm flex-shrink-0"
+          className="text-sm flex-shrink-0 expand-icon"
           style={{ color: "var(--text-tertiary)" }}
           aria-hidden="true"
         >
-          {expanded ? "▲" : "▼"}
+          &#9660;
         </span>
       </button>
 
       {expanded && (
-        <div id={contentId} className="mt-3 ml-8 space-y-2 text-sm">
+        <div id={contentId} className="mt-3 ml-8 space-y-2 text-sm animate-slide-in">
           {result.details && (
             <p style={{ color: "var(--text-tertiary)" }}>{result.details}</p>
           )}
@@ -441,7 +709,7 @@ function CheckResultCard({ result }: { result: CheckResult }) {
           {result.recommendation && (
             <div className="p-3 rounded-lg" style={{ background: "var(--bg-tertiary)" }}>
               <p style={{ color: "var(--text-secondary)" }}>
-                <span className="font-medium">Recommendation:</span>{" "}
+                <span className="font-medium">&#128161; Recommendation:</span>{" "}
                 {result.recommendation}
               </p>
             </div>
@@ -500,8 +768,12 @@ function ManualChecksSection({
             These items require manual verification
           </p>
         </div>
-        <span style={{ color: "var(--text-tertiary)" }} aria-hidden="true">
-          {expanded ? "▲" : "▼"}
+        <span
+          className="expand-icon"
+          style={{ color: "var(--text-tertiary)" }}
+          aria-hidden="true"
+        >
+          &#9660;
         </span>
       </button>
 
@@ -518,14 +790,17 @@ function ManualChecksSection({
                   Level {level}: {levelNames[Number(level)]}
                 </h3>
                 <ul className="space-y-2" role="list">
-                  {checks.map((check) => (
+                  {checks.map((check, i) => (
                     <li
                       key={check.id}
-                      className="p-3 rounded-lg"
-                      style={{ background: "var(--bg-tertiary)" }}
+                      className="p-3 rounded-lg card-interactive animate-slide-in"
+                      style={{
+                        background: "var(--bg-tertiary)",
+                        animationDelay: `${i * 30}ms`
+                      }}
                     >
                       <div className="flex items-center gap-2">
-                        <span style={{ color: "var(--text-tertiary)" }} aria-hidden="true">☐</span>
+                        <span style={{ color: "var(--text-tertiary)" }} aria-hidden="true">&#9744;</span>
                         <span className="font-medium">{check.name}</span>
                       </div>
                       <p className="text-sm mt-1 ml-6" style={{ color: "var(--text-secondary)" }}>

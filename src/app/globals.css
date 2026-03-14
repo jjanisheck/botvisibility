@@ -35,6 +35,13 @@
   --color-error: oklch(0.62 0.22 25);
   --color-info: oklch(0.65 0.12 250);
 
+  /* Tier-specific colors */
+  --tier-invisible: oklch(0.55 0.25 25);
+  --tier-dim: oklch(0.70 0.18 55);
+  --tier-visible: oklch(0.78 0.16 85);
+  --tier-clear: oklch(0.72 0.20 145);
+  --tier-beacon: oklch(0.70 0.22 300);
+
   /* Semantic tokens */
   --bg-primary: var(--color-neutral-950);
   --bg-secondary: var(--color-neutral-900);
@@ -74,6 +81,7 @@
   --text-2xl: clamp(1.5rem, 1.2rem + 1vw, 2rem);
   --text-3xl: clamp(1.875rem, 1.4rem + 1.5vw, 2.5rem);
   --text-4xl: clamp(2.25rem, 1.6rem + 2vw, 3.5rem);
+  --text-5xl: clamp(3rem, 2rem + 3vw, 5rem);
 
   /* Transitions */
   --transition-fast: 150ms ease-out;
@@ -88,6 +96,8 @@
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
 }
 
 /* ============================================
@@ -117,7 +127,7 @@ body {
 }
 
 /* ============================================
-   ANIMATIONS — with reduced motion support
+   ANIMATIONS — Gamified and delightful
    ============================================ */
 
 @keyframes fadeSlideIn {
@@ -131,6 +141,56 @@ body {
   }
 }
 
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -141,8 +201,152 @@ body {
   50% { opacity: 0.6; }
 }
 
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--accent-primary);
+  }
+  50% {
+    box-shadow: 0 0 20px 4px var(--accent-primary);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes progressPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes invisiblePulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 oklch(0.55 0.25 25 / 0.5);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: 0 0 30px 10px oklch(0.55 0.25 25 / 0.3);
+  }
+}
+
+@keyframes beaconGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px 5px oklch(0.70 0.22 300 / 0.4);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 40px 15px oklch(0.70 0.22 300 / 0.6);
+    filter: brightness(1.1);
+  }
+}
+
+@keyframes clearGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px 3px oklch(0.72 0.20 145 / 0.3);
+  }
+  50% {
+    box-shadow: 0 0 25px 8px oklch(0.72 0.20 145 / 0.5);
+  }
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(-10px) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes countUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ringProgress {
+  from {
+    stroke-dashoffset: 283;
+  }
+}
+
+@keyframes checkPop {
+  0% {
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes badgeReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotate(-10deg);
+  }
+  60% {
+    transform: scale(1.1) rotate(3deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes ghostFloat {
+  0%, 100% {
+    opacity: 0.8;
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1.05);
+  }
+}
+
 .animate-slide-in {
   animation: fadeSlideIn var(--transition-slow) ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInFromRight 400ms ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 300ms ease-out forwards;
+}
+
+.animate-bounce-in {
+  animation: bounceIn 500ms cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
 }
 
 .animate-spin {
@@ -153,6 +357,41 @@ body {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
+.animate-pulse-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--accent-primary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+.animate-progress-pulse {
+  animation: progressPulse 1s ease-in-out infinite;
+}
+
+.animate-count-up {
+  animation: countUp 600ms ease-out forwards;
+}
+
+.animate-badge-reveal {
+  animation: badgeReveal 600ms cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+}
+
+.animate-check-pop {
+  animation: checkPop 400ms cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
 /* Respect user preference */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -161,12 +400,6 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-
-  .animate-slide-in,
-  .animate-spin,
-  .animate-pulse {
-    animation: none;
   }
 }
 
@@ -180,14 +413,93 @@ body {
 .status-unknown { color: var(--text-tertiary); }
 
 /* ============================================
-   TIER COLORS — Distinct, not AI gradient slop
+   TIER COLORS & STYLES — Game-like badges
    ============================================ */
 
-.tier-invisible { color: var(--color-error); }
-.tier-findable { color: oklch(0.70 0.16 55); }
-.tier-usable { color: var(--color-warning); }
-.tier-ready { color: var(--color-success); }
-.tier-agent-native { color: var(--color-brand-400); }
+.tier-invisible {
+  color: var(--tier-invisible);
+}
+
+.tier-dim {
+  color: var(--tier-dim);
+}
+
+.tier-visible {
+  color: var(--tier-visible);
+}
+
+.tier-clear {
+  color: var(--tier-clear);
+}
+
+.tier-beacon {
+  color: var(--tier-beacon);
+}
+
+/* Tier badge containers with effects */
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--radius-xl);
+  font-weight: 700;
+  font-size: var(--text-2xl);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tier-badge-invisible {
+  background: linear-gradient(135deg, oklch(0.20 0.15 25), oklch(0.15 0.20 25));
+  border: 2px solid var(--tier-invisible);
+  animation: invisiblePulse 2s ease-in-out infinite;
+}
+
+.tier-badge-dim {
+  background: linear-gradient(135deg, oklch(0.25 0.10 55), oklch(0.20 0.12 55));
+  border: 2px solid var(--tier-dim);
+}
+
+.tier-badge-visible {
+  background: linear-gradient(135deg, oklch(0.28 0.08 85), oklch(0.22 0.10 85));
+  border: 2px solid var(--tier-visible);
+}
+
+.tier-badge-clear {
+  background: linear-gradient(135deg, oklch(0.25 0.10 145), oklch(0.18 0.12 145));
+  border: 2px solid var(--tier-clear);
+  animation: clearGlow 3s ease-in-out infinite;
+}
+
+.tier-badge-beacon {
+  background: linear-gradient(135deg, oklch(0.25 0.15 300), oklch(0.18 0.18 280));
+  border: 2px solid var(--tier-beacon);
+  animation: beaconGlow 2s ease-in-out infinite;
+}
+
+/* Ghost icon for invisible tier */
+.ghost-icon {
+  animation: ghostFloat 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px var(--tier-invisible));
+}
+
+/* ============================================
+   SCORE DISPLAY — Game score style
+   ============================================ */
+
+.score-display {
+  font-family: "Instrument Sans", monospace;
+  font-weight: 800;
+  font-size: var(--text-5xl);
+  line-height: 1;
+  text-shadow: 0 4px 20px currentColor;
+}
+
+.score-counter {
+  display: inline-block;
+  min-width: 1.2em;
+  text-align: center;
+}
 
 /* ============================================
    FORM ELEMENTS
@@ -227,7 +539,7 @@ input:disabled {
 }
 
 /* ============================================
-   BUTTONS
+   BUTTONS — Energy and excitement
    ============================================ */
 
 button {
@@ -241,38 +553,116 @@ button:disabled {
 }
 
 .btn-primary {
-  background: var(--accent-primary);
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
   color: var(--text-inverse);
   border: none;
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-6);
-  font-weight: 500;
+  font-weight: 600;
   font-size: var(--text-base);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    oklch(1 0 0 / 0.2),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+.btn-primary:hover:not(:disabled)::before {
+  left: 100%;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px oklch(0.60 0.16 60 / 0.3);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn-primary:focus-visible {
   box-shadow: var(--focus-ring);
 }
 
+/* Scan button with energy glow */
+.btn-scan {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.btn-scan:hover:not(:disabled) {
+  animation: none;
+}
+
 /* ============================================
-   PROGRESS BAR — Accessible
+   PROGRESS BAR — Exciting, not boring
    ============================================ */
 
+.progress-container {
+  position: relative;
+  width: 100%;
+}
+
 .progress-bar {
-  height: 4px;
+  height: 8px;
   background: var(--bg-tertiary);
-  border-radius: 2px;
+  border-radius: var(--radius-full);
   overflow: hidden;
+  position: relative;
 }
 
 .progress-bar-fill {
   height: 100%;
-  background: var(--accent-primary);
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-hover), oklch(0.70 0.20 145));
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
   transition: width var(--transition-slow);
+  border-radius: var(--radius-full);
+}
+
+.progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 20px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.4));
+}
+
+/* Circular progress ring */
+.progress-ring {
+  transform: rotate(-90deg);
+}
+
+.progress-ring-background {
+  fill: none;
+  stroke: var(--bg-tertiary);
+  stroke-width: 8;
+}
+
+.progress-ring-progress {
+  fill: none;
+  stroke: var(--accent-primary);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease-out;
+}
+
+.progress-ring-glow {
+  filter: drop-shadow(0 0 6px var(--accent-primary));
 }
 
 /* ============================================
@@ -288,11 +678,13 @@ button:disabled {
 .card-interactive {
   background: var(--bg-interactive);
   border: 1px solid transparent;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .card-interactive:hover {
   background: var(--bg-interactive-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px oklch(0 0 0 / 0.3);
 }
 
 .card-interactive:focus-visible {
@@ -319,6 +711,96 @@ button:disabled {
 .card-unknown {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
+}
+
+/* Score card with tier-specific styles */
+.score-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.score-card-invisible {
+  background: linear-gradient(135deg, oklch(0.15 0.08 25), oklch(0.12 0.10 25));
+  border: 1px solid oklch(0.55 0.25 25 / 0.3);
+}
+
+.score-card-dim {
+  background: linear-gradient(135deg, oklch(0.16 0.06 55), oklch(0.13 0.08 55));
+  border: 1px solid oklch(0.70 0.18 55 / 0.3);
+}
+
+.score-card-visible {
+  background: linear-gradient(135deg, oklch(0.17 0.05 85), oklch(0.14 0.06 85));
+  border: 1px solid oklch(0.78 0.16 85 / 0.3);
+}
+
+.score-card-clear {
+  background: linear-gradient(135deg, oklch(0.16 0.06 145), oklch(0.12 0.08 145));
+  border: 1px solid oklch(0.72 0.20 145 / 0.3);
+}
+
+.score-card-beacon {
+  background: linear-gradient(135deg, oklch(0.16 0.08 300), oklch(0.12 0.10 280));
+  border: 1px solid oklch(0.70 0.22 300 / 0.3);
+}
+
+/* ============================================
+   CONFETTI
+   ============================================ */
+
+.confetti-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.confetti-piece {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  animation: confettiFall 3s ease-out forwards;
+}
+
+.confetti-piece:nth-child(odd) {
+  border-radius: 50%;
+}
+
+.confetti-piece:nth-child(even) {
+  border-radius: 0;
+  transform: rotate(45deg);
+}
+
+/* ============================================
+   CHECK RESULT CARDS — Micro-interactions
+   ============================================ */
+
+.check-card {
+  transition: all var(--transition-fast);
+}
+
+.check-card:hover {
+  transform: translateX(4px);
+}
+
+.check-icon {
+  transition: transform var(--transition-fast);
+}
+
+.check-card:hover .check-icon {
+  transform: scale(1.2);
+}
+
+.expand-icon {
+  transition: transform var(--transition-fast);
+}
+
+.check-card[aria-expanded="true"] .expand-icon {
+  transform: rotate(180deg);
 }
 
 /* ============================================
@@ -375,3 +857,14 @@ button:disabled {
 .skip-link:focus {
   top: var(--space-4);
 }
+
+/* Staggered animation delays */
+.stagger-1 { animation-delay: 50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }
+.stagger-5 { animation-delay: 250ms; }
+.stagger-6 { animation-delay: 300ms; }
+.stagger-7 { animation-delay: 350ms; }
+.stagger-8 { animation-delay: 400ms; }
+.stagger-9 { animation-delay: 450ms; }

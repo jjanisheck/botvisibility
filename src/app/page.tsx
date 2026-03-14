@@ -403,6 +403,9 @@ export default function Home() {
   const startScan = useCallback(async () => {
     if (!url.trim()) return;
 
+    // Auto-prepend https:// if no protocol specified
+    const scanUrl = url.match(/^https?:\/\//) ? url : `https://${url}`;
+
     setScanState("scanning");
     setResults([]);
     setFinalResult(null);
@@ -412,7 +415,7 @@ export default function Home() {
 
     try {
       const eventSource = new EventSource(
-        `/api/scan?url=${encodeURIComponent(url)}`
+        `/api/scan?url=${encodeURIComponent(scanUrl)}`
       );
 
       eventSource.addEventListener("checking", (event) => {
@@ -512,7 +515,7 @@ export default function Home() {
                   <input
                     ref={inputRef}
                     id={inputId}
-                    type="url"
+                    type="text"
                     placeholder="yoursite.com"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}

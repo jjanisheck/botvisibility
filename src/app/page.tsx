@@ -678,7 +678,7 @@ export default function Home() {
                 <span>
                   Based on the{" "}
                   <a
-                    href="https://github.com/joeyjanisheck/agent-readiness-audit"
+                    href="https://github.com/jjanisheck/botvisibility"
                     target="_blank"
                     rel="noopener noreferrer"
                   >

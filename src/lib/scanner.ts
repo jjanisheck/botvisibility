@@ -1,5 +1,36 @@
 import { CheckResult } from './types';
 
+const BOT_USER_AGENT = 'BotVisibility/1.0 (+https://botvisibility.com; agent-readiness-scanner)';
+const FETCH_TIMEOUT = 10000; // 10 seconds
+
+// Wrapper around fetch with User-Agent, timeout, and error handling
+async function safeFetch(url: string, opts: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': BOT_USER_AGENT,
+    };
+    if (opts.headers) {
+      const h = opts.headers as Record<string, string>;
+      for (const [k, v] of Object.entries(h)) {
+        headers[k] = v;
+      }
+    }
+
+    const res = await fetch(url, {
+      ...opts,
+      headers,
+      signal: controller.signal,
+      redirect: 'follow',
+    });
+    return res;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // Validate URL format and normalize
 export function normalizeUrl(input: string): string {
   let url = input.trim();
@@ -17,84 +48,97 @@ export function normalizeUrl(input: string): string {
 // Individual check functions - each returns a CheckResult
 
 export async function checkLlmsTxt(baseUrl: string): Promise<CheckResult> {
-  const url = `${baseUrl}/llms.txt`;
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { 'Accept': 'text/plain' },
-    });
+  const paths = ['/llms.txt', '/llms-full.txt', '/.well-known/llms.txt'];
 
-    if (res.ok) {
-      const text = await res.text();
-      const hasContent = text.length > 50;
-      const hasMarkdownStyle = text.includes('#') || text.includes('##');
-      const hasLinks = text.includes('http://') || text.includes('https://');
+  for (const path of paths) {
+    const url = `${baseUrl}${path}`;
+    try {
+      const res = await safeFetch(url, {
+        method: 'GET',
+        headers: { 'Accept': 'text/plain' },
+      });
 
-      if (hasContent && (hasMarkdownStyle || hasLinks)) {
-        return {
-          id: '1.1',
-          name: 'llms.txt',
-          passed: true,
-          status: 'pass',
-          level: 1,
-          category: 'Discoverable',
-          autoDetectable: true,
-          message: 'llms.txt exists with valid content',
-          details: `Found at ${url} (${text.length} chars)`,
-          foundAt: url
-        };
-      } else {
-        return {
-          id: '1.1',
-          name: 'llms.txt',
-          passed: false,
-          status: 'partial',
-          level: 1,
-          category: 'Discoverable',
-          autoDetectable: true,
-          message: 'llms.txt exists but appears incomplete',
-          details: `Found at ${url} but content seems minimal`,
-          recommendation: 'Add app description, API links, and documentation references. See llmstxt.org for format.',
-          foundAt: url
-        };
+      if (res.ok) {
+        const text = await res.text();
+        // Verify it's actually text content, not an HTML error page
+        const isHtml = text.trimStart().startsWith('<!') || text.trimStart().startsWith('<html');
+        if (isHtml) continue;
+
+        const hasContent = text.length > 50;
+        const hasMarkdownStyle = text.includes('#') || text.includes('##');
+        const hasLinks = text.includes('http://') || text.includes('https://');
+
+        if (hasContent && (hasMarkdownStyle || hasLinks)) {
+          return {
+            id: '1.1',
+            name: 'llms.txt',
+            passed: true,
+            status: 'pass',
+            level: 1,
+            category: 'Discoverable',
+            autoDetectable: true,
+            message: 'llms.txt exists with valid content',
+            details: `Found at ${path} (${text.length} chars)`,
+            foundAt: url
+          };
+        } else if (hasContent) {
+          return {
+            id: '1.1',
+            name: 'llms.txt',
+            passed: true,
+            status: 'partial',
+            level: 1,
+            category: 'Discoverable',
+            autoDetectable: true,
+            message: 'llms.txt exists but could be improved',
+            details: `Found at ${path} but missing markdown structure or links`,
+            recommendation: 'Add app description, API links, and documentation references. See llmstxt.org for format.',
+            foundAt: url
+          };
+        }
       }
+    } catch {
+      // Try next path
     }
-
-    return {
-      id: '1.1',
-      name: 'llms.txt',
-      passed: false,
-      status: 'fail',
-      level: 1,
-      category: 'Discoverable',
-      autoDetectable: true,
-      message: 'No llms.txt found',
-      recommendation: 'Create /llms.txt with app description, capabilities, and API documentation links. Takes ~15 minutes. See llmstxt.org'
-    };
-  } catch (e) {
-    return {
-      id: '1.1',
-      name: 'llms.txt',
-      passed: false,
-      status: 'fail',
-      level: 1,
-      category: 'Discoverable',
-      autoDetectable: true,
-      message: 'Failed to check llms.txt',
-      details: e instanceof Error ? e.message : 'Network error'
-    };
   }
+
+  return {
+    id: '1.1',
+    name: 'llms.txt',
+    passed: false,
+    status: 'fail',
+    level: 1,
+    category: 'Discoverable',
+    autoDetectable: true,
+    message: 'No llms.txt found',
+    recommendation: 'Create /llms.txt with app description, capabilities, and API documentation links. Takes ~15 minutes. See llmstxt.org'
+  };
 }
 
 export async function checkAgentCard(baseUrl: string): Promise<CheckResult> {
   const url = `${baseUrl}/.well-known/agent-card.json`;
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: { 'Accept': 'application/json' }
     });
 
     if (res.ok) {
       const text = await res.text();
+      // Skip if server returned HTML (soft 404)
+      const isHtml = text.trimStart().startsWith('<!') || text.trimStart().startsWith('<html');
+      if (isHtml) {
+        return {
+          id: '1.2',
+          name: 'Agent Card',
+          passed: false,
+          status: 'fail',
+          level: 1,
+          category: 'Discoverable',
+          autoDetectable: true,
+          message: 'No agent-card.json found',
+          recommendation: 'Create /.well-known/agent-card.json with name, description, url, api spec URL, and auth info. Takes ~15 minutes.'
+        };
+      }
       try {
         const json = JSON.parse(text);
         const requiredFields = ['name', 'description', 'url'];
@@ -187,7 +231,7 @@ export async function checkOpenApiSpec(baseUrl: string): Promise<CheckResult> {
   for (const path of paths) {
     try {
       const url = `${baseUrl}${path}`;
-      const res = await fetch(url, {
+      const res = await safeFetch(url, {
         headers: { 'Accept': 'application/json, application/yaml, text/yaml' }
       });
 
@@ -231,7 +275,7 @@ export async function checkOpenApiSpec(baseUrl: string): Promise<CheckResult> {
 export async function checkRobotsTxt(baseUrl: string): Promise<CheckResult> {
   const url = `${baseUrl}/robots.txt`;
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: { 'Accept': 'text/plain' }
     });
 
@@ -245,6 +289,7 @@ export async function checkRobotsTxt(baseUrl: string): Promise<CheckResult> {
       });
 
       const allowsApi = !text.includes('disallow: /api');
+      const hasSitemap = text.includes('sitemap:');
 
       if (blockedAgents.length === 0 && allowsApi) {
         return {
@@ -256,7 +301,7 @@ export async function checkRobotsTxt(baseUrl: string): Promise<CheckResult> {
           category: 'Discoverable',
           autoDetectable: true,
           message: 'robots.txt allows AI crawlers',
-          details: 'No AI agents blocked, API paths accessible',
+          details: `No AI agents blocked, API paths accessible${hasSitemap ? ', sitemap referenced' : ''}`,
           foundAt: url
         };
       } else if (blockedAgents.length > 0) {
@@ -319,17 +364,34 @@ export async function checkRobotsTxt(baseUrl: string): Promise<CheckResult> {
 
 export async function checkCorsHeaders(baseUrl: string): Promise<CheckResult> {
   try {
-    // Try an OPTIONS request to check CORS
-    const res = await fetch(baseUrl, {
-      method: 'OPTIONS',
-      headers: {
-        'Origin': 'https://example.com',
-        'Access-Control-Request-Method': 'GET'
-      }
-    });
+    // Try multiple methods to detect CORS headers
+    // First try OPTIONS preflight
+    let corsHeader: string | null = null;
+    let corsMethodsHeader: string | null = null;
 
-    const corsHeader = res.headers.get('access-control-allow-origin');
-    const corsMethodsHeader = res.headers.get('access-control-allow-methods');
+    try {
+      const optRes = await safeFetch(baseUrl, {
+        method: 'OPTIONS',
+        headers: {
+          'Origin': 'https://example.com',
+          'Access-Control-Request-Method': 'GET'
+        }
+      });
+      corsHeader = optRes.headers.get('access-control-allow-origin');
+      corsMethodsHeader = optRes.headers.get('access-control-allow-methods');
+    } catch {
+      // OPTIONS might fail, that's ok
+    }
+
+    // If OPTIONS didn't work, try a regular GET and check for CORS header
+    if (!corsHeader) {
+      const getRes = await safeFetch(baseUrl, {
+        method: 'GET',
+        headers: { 'Origin': 'https://example.com' }
+      });
+      corsHeader = getRes.headers.get('access-control-allow-origin');
+      corsMethodsHeader = getRes.headers.get('access-control-allow-methods');
+    }
 
     if (corsHeader) {
       return {
@@ -373,12 +435,12 @@ export async function checkCorsHeaders(baseUrl: string): Promise<CheckResult> {
 export async function checkOpenIdConfig(baseUrl: string): Promise<CheckResult> {
   const url = `${baseUrl}/.well-known/openid-configuration`;
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: { 'Accept': 'application/json' }
     });
 
     if (res.ok) {
-      const json = await res.json();
+      const json = await res.json() as Record<string, unknown>;
       const hasIssuer = 'issuer' in json;
       const hasTokenEndpoint = 'token_endpoint' in json;
 
@@ -425,7 +487,7 @@ export async function checkOpenIdConfig(baseUrl: string): Promise<CheckResult> {
 
 export async function checkStructuredData(baseUrl: string): Promise<CheckResult> {
   try {
-    const res = await fetch(baseUrl, {
+    const res = await safeFetch(baseUrl, {
       headers: { 'Accept': 'text/html' }
     });
 
@@ -434,10 +496,13 @@ export async function checkStructuredData(baseUrl: string): Promise<CheckResult>
 
       // Check for JSON-LD
       const hasJsonLd = html.includes('application/ld+json');
-      // Check for API-related meta tags
-      const hasApiMeta = html.includes('api') && (html.includes('<meta') || html.includes('<link'));
+      // Check for OpenGraph / meta description (helps bots understand the page)
+      const hasOgTags = html.includes('og:title') || html.includes('og:description');
+      const hasMetaDescription = html.includes('name="description"') || html.includes('name=\'description\'');
       // Check for developer/documentation links
-      const hasDevLinks = html.includes('/docs') || html.includes('/api') || html.includes('developer');
+      const hasDevLinks = html.includes('/docs') || html.includes('/api') || html.includes('developer') || html.includes('documentation');
+      // Check for sitemap reference
+      const hasSitemap = html.includes('sitemap');
 
       if (hasJsonLd) {
         return {
@@ -451,7 +516,19 @@ export async function checkStructuredData(baseUrl: string): Promise<CheckResult>
           message: 'Page has structured data (JSON-LD)',
           details: 'Structured data helps agents understand page content'
         };
-      } else if (hasDevLinks) {
+      } else if (hasDevLinks || (hasOgTags && hasMetaDescription)) {
+        return {
+          id: '1.5',
+          name: 'Documentation Accessibility',
+          passed: true,
+          status: 'pass',
+          level: 1,
+          category: 'Discoverable',
+          autoDetectable: true,
+          message: hasDevLinks ? 'Page has documentation/API links' : 'Page has rich meta tags for discoverability',
+          details: hasDevLinks ? 'Found links to docs or API' : 'OpenGraph and meta description present'
+        };
+      } else if (hasOgTags || hasMetaDescription || hasSitemap) {
         return {
           id: '1.5',
           name: 'Documentation Accessibility',
@@ -460,8 +537,9 @@ export async function checkStructuredData(baseUrl: string): Promise<CheckResult>
           level: 1,
           category: 'Discoverable',
           autoDetectable: true,
-          message: 'Page has documentation links',
-          details: 'Found links to docs or API'
+          message: 'Basic page discoverability present',
+          details: 'Some meta tags found, but no structured data or doc links',
+          recommendation: 'Add JSON-LD structured data and ensure docs are accessible without JavaScript.'
         };
       }
     }
@@ -493,7 +571,7 @@ export async function checkStructuredData(baseUrl: string): Promise<CheckResult>
 
 export async function checkRateLimitHeaders(baseUrl: string): Promise<CheckResult> {
   try {
-    const res = await fetch(baseUrl, { method: 'GET' });
+    const res = await safeFetch(baseUrl, { method: 'GET' });
 
     const rateLimitHeaders = [
       'x-ratelimit-limit',
@@ -565,15 +643,15 @@ export async function checkRateLimitHeaders(baseUrl: string): Promise<CheckResul
 
 export async function checkCachingHeaders(baseUrl: string): Promise<CheckResult> {
   try {
-    const res = await fetch(baseUrl, { method: 'GET' });
+    const res = await safeFetch(baseUrl, { method: 'GET' });
 
     const etag = res.headers.get('etag');
     const lastModified = res.headers.get('last-modified');
     const cacheControl = res.headers.get('cache-control');
 
-    const hasCaching = etag || lastModified || cacheControl;
+    const cachingSignals = [etag, lastModified, cacheControl].filter(Boolean);
 
-    if (etag && cacheControl) {
+    if (cachingSignals.length >= 2) {
       return {
         id: '3.7',
         name: 'Caching Headers',
@@ -583,20 +661,20 @@ export async function checkCachingHeaders(baseUrl: string): Promise<CheckResult>
         category: 'Optimized',
         autoDetectable: true,
         message: 'Caching headers present',
-        details: `ETag: ${etag ? 'yes' : 'no'}, Cache-Control: ${cacheControl || 'no'}`
+        details: `ETag: ${etag ? 'yes' : 'no'}, Cache-Control: ${cacheControl || 'no'}, Last-Modified: ${lastModified ? 'yes' : 'no'}`
       };
-    } else if (hasCaching) {
+    } else if (cachingSignals.length === 1) {
       return {
         id: '3.7',
         name: 'Caching Headers',
-        passed: false,
+        passed: true,
         status: 'partial',
         level: 3,
         category: 'Optimized',
         autoDetectable: true,
-        message: 'Partial caching support',
-        details: `ETag: ${etag || 'no'}, Last-Modified: ${lastModified || 'no'}`,
-        recommendation: 'Add ETag headers for conditional requests support.'
+        message: 'Basic caching support',
+        details: `ETag: ${etag || 'no'}, Cache-Control: ${cacheControl || 'no'}, Last-Modified: ${lastModified || 'no'}`,
+        recommendation: 'Add ETag headers alongside Cache-Control for conditional requests support.'
       };
     }
 

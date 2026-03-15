@@ -9,15 +9,6 @@ type ScanState = "idle" | "scanning" | "complete" | "error";
 // ANIMATED BACKGROUND
 // ============================================
 function AnimatedBackground() {
-  const particles = useMemo(() =>
-    Array.from({ length: 20 }, (_, i) => ({
-      id: i,
-      left: `${Math.random() * 100}%`,
-      top: `${Math.random() * 100}%`,
-      delay: `${Math.random() * 8}s`,
-    })), []
-  );
-
   return (
     <div className="hero-background" aria-hidden="true">
       {/* Grid pattern */}
@@ -25,38 +16,6 @@ function AnimatedBackground() {
 
       {/* Animated scan line */}
       <div className="scan-line" />
-
-      {/* Floating particles */}
-      {particles.map((p) => (
-        <div
-          key={p.id}
-          className="particle"
-          style={{ left: p.left, top: p.top, animationDelay: p.delay }}
-        />
-      ))}
-
-      {/* Ambient glow orbs */}
-      <div
-        className="glow-orb"
-        style={{
-          width: 600,
-          height: 600,
-          left: "10%",
-          top: "10%",
-          background: "radial-gradient(circle, oklch(0.78 0.18 200 / 0.15), transparent)",
-        }}
-      />
-      <div
-        className="glow-orb"
-        style={{
-          width: 400,
-          height: 400,
-          right: "5%",
-          bottom: "20%",
-          background: "radial-gradient(circle, oklch(0.72 0.25 290 / 0.1), transparent)",
-          animationDelay: "3s",
-        }}
-      />
     </div>
   );
 }
@@ -67,15 +26,15 @@ function AnimatedBackground() {
 function RadarIcon({ size = 64 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-      <circle cx="32" cy="32" r="28" stroke="url(#radarGrad)" strokeWidth="2" opacity="0.5" />
-      <circle cx="32" cy="32" r="20" stroke="url(#radarGrad)" strokeWidth="1.5" opacity="0.3" />
-      <circle cx="32" cy="32" r="12" stroke="url(#radarGrad)" strokeWidth="1" opacity="0.2" />
-      <line x1="32" y1="4" x2="32" y2="60" stroke="url(#radarGrad)" strokeWidth="1" opacity="0.2" />
-      <line x1="4" y1="32" x2="60" y2="32" stroke="url(#radarGrad)" strokeWidth="1" opacity="0.2" />
+      <circle cx="32" cy="32" r="28" stroke="#1a1a1a" strokeWidth="3" />
+      <circle cx="32" cy="32" r="20" stroke="#1a1a1a" strokeWidth="2" />
+      <circle cx="32" cy="32" r="12" stroke="#1a1a1a" strokeWidth="2" />
+      <line x1="32" y1="4" x2="32" y2="60" stroke="#1a1a1a" strokeWidth="2" />
+      <line x1="4" y1="32" x2="60" y2="32" stroke="#1a1a1a" strokeWidth="2" />
       <path
         d="M32 32 L32 8 A24 24 0 0 1 56 32 Z"
-        fill="url(#sweepGrad)"
-        opacity="0.6"
+        fill="#7C6DC7"
+        opacity="0.5"
       >
         <animateTransform
           attributeName="transform"
@@ -86,17 +45,7 @@ function RadarIcon({ size = 64 }: { size?: number }) {
           repeatCount="indefinite"
         />
       </path>
-      <circle cx="32" cy="32" r="4" fill="url(#radarGrad)" />
-      <defs>
-        <linearGradient id="radarGrad" x1="0" y1="0" x2="64" y2="64">
-          <stop stopColor="oklch(0.78 0.18 200)" />
-          <stop offset="1" stopColor="oklch(0.72 0.25 290)" />
-        </linearGradient>
-        <linearGradient id="sweepGrad" x1="32" y1="32" x2="56" y2="8">
-          <stop stopColor="oklch(0.78 0.18 200 / 0.4)" />
-          <stop offset="1" stopColor="oklch(0.78 0.18 200 / 0)" />
-        </linearGradient>
-      </defs>
+      <circle cx="32" cy="32" r="5" fill="#1a1a1a" />
     </svg>
   );
 }
@@ -226,8 +175,8 @@ function ScoreGauge({
               y1={y1}
               x2={x2}
               y2={y2}
-              stroke="oklch(0.4 0.02 260)"
-              strokeWidth={i === 0 || i === 9 ? 2 : 1}
+              stroke="#9CA3AF"
+              strokeWidth={i === 0 || i === 9 ? 3 : 2}
             />
           );
         })}
@@ -338,11 +287,11 @@ function Confetti({ active }: { active: boolean }) {
   useEffect(() => {
     if (active) {
       const colors = [
-        "oklch(0.75 0.22 145)",
-        "oklch(0.72 0.25 290)",
-        "oklch(0.78 0.18 200)",
-        "oklch(0.80 0.16 85)",
-        "oklch(0.75 0.20 55)",
+        "#4ADE80",
+        "#7C6DC7",
+        "#F472B6",
+        "#FACC15",
+        "#8B5CF6",
       ];
       const shapes: Array<"circle" | "square" | "triangle"> = ["circle", "square", "triangle"];
 
@@ -500,6 +449,16 @@ export default function Home() {
             <p className="tagline">
               How visible is your product to AI agents? Scan any URL and find out in seconds.
             </p>
+
+            {/* Fun banner like the design */}
+            {scanState === "idle" && (
+              <div className="banner" style={{ marginTop: "1.5rem" }}>
+                <div className="banner-title">Free AI visibility audit</div>
+                <div className="banner-subtitle">
+                  Check your site against 9 automated tests in seconds
+                </div>
+              </div>
+            )}
           </header>
 
           {/* Main */}
@@ -555,11 +514,13 @@ export default function Home() {
               <div
                 id={errorId}
                 role="alert"
-                className="mb-8 p-4 rounded-xl animate-in"
+                className="mb-8 p-4 rounded-lg animate-in"
                 style={{
-                  background: "oklch(0.60 0.25 25 / 0.1)",
-                  border: "1px solid oklch(0.60 0.25 25 / 0.3)",
-                  color: "var(--color-error)",
+                  background: "#FEE2E2",
+                  border: "3px solid #1a1a1a",
+                  color: "#991B1B",
+                  boxShadow: "var(--shadow-brutal-sm)",
+                  fontWeight: 600,
                 }}
               >
                 {error}

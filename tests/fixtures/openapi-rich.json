@@ -1,0 +1,50 @@
+{
+  "openapi": "3.0.0",
+  "info": { "title": "Rich API", "version": "1.0.0" },
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      },
+      "oauth2": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "https://example.com/token",
+            "scopes": {
+              "read": "Read access",
+              "write": "Write access"
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/items": {
+      "get": {
+        "parameters": [
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } },
+          { "name": "fields", "in": "query", "schema": { "type": "string" } },
+          { "name": "filter", "in": "query", "schema": { "type": "string" } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      },
+      "post": {
+        "parameters": [
+          { "name": "Idempotency-Key", "in": "header", "schema": { "type": "string" } }
+        ],
+        "responses": { "202": { "description": "Accepted" } }
+      }
+    },
+    "/items/bulk": {
+      "post": {
+        "summary": "Bulk create items",
+        "responses": { "200": { "description": "OK" } }
+      }
+    }
+  }
+}

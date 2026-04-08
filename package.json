@@ -1,0 +1,55 @@
+{
+  "name": "botvisibility",
+  "version": "1.3.1",
+  "description": "Scan any URL to check if it's ready for AI agents",
+  "main": "dist/index.js",
+  "bin": {
+    "botvisibility": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "openapi",
+    "llms.txt",
+    "agent-card",
+    "api",
+    "scanner",
+    "audit",
+    "mcp"
+  ],
+  "author": "Joey Janisheck",
+  "license": "MIT",
+  "homepage": "https://botvisibility.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jjanisheck/botvisibility.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jjanisheck/botvisibility/issues"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

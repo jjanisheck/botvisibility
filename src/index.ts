@@ -4,6 +4,7 @@ import { normalizeUrl, runAllChecks } from './scanner.js';
 import { runRepoChecks } from './repo-scanner.js';
 import { calculateLevelProgress, getCurrentLevel, LEVELS, CLI_CHECKS } from './scoring.js';
 import { CheckResult, ScanResult, RepoCheckResult, LevelProgress } from './types.js';
+import { parseArgs } from './args.js';
 import * as path from 'path';
 import * as readline from 'readline';
 
@@ -316,27 +317,12 @@ async function promptPublish(result: ScanResult, repoChecks?: RepoCheckResult[])
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const { jsonOutput, helpFlag, repoPath, url: urlInput } = parseArgs(process.argv.slice(2));
 
-  // Parse flags
-  const jsonOutput = args.includes('--json');
-  const helpFlag = args.includes('--help') || args.includes('-h');
-  const repoIndex = args.indexOf('--repo');
-  const repoPath = repoIndex !== -1 ? args[repoIndex + 1] : null;
-
-  // Filter out flags to get URL
-  const urlArgs = args.filter((arg, i) =>
-    !arg.startsWith('--') &&
-    !arg.startsWith('-') &&
-    (repoIndex === -1 || i !== repoIndex + 1)
-  );
-
-  if (helpFlag || urlArgs.length === 0) {
+  if (helpFlag || !urlInput) {
     printHelp();
     process.exit(0);
   }
-
-  const urlInput = urlArgs[0];
 
   // Normalize URL
   let baseUrl: string;

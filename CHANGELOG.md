@@ -2,6 +2,14 @@
 
 All notable changes to the BotVisibility CLI are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-04-20
+
+### Added
+- Test coverage lifted from 49 → 141 tests. New suites cover timeout/network-failure paths, `robots.txt` AI policy branches, CORS OPTIONS→GET fallback, malformed-JSON handling on agent-card/ai.json/skills-index, page-token-efficiency thresholds with mitigation, MCP tool-quality 80% boundary, RSS two-stage discovery, structured-error probe, and every Level 4 repo check. Overall statement coverage is now 85.5% (branch 82.1%).
+
+### Changed
+- CLI argument parsing extracted into `src/args.ts` and exported as `parseArgs`. `main()` now consumes it unchanged. No behavior change; enables unit testing of flag combinations.
+
 ## [1.3.1] - 2026-04-08
 
 First public open-source release. The CLI is now a standalone repository.

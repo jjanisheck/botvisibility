@@ -4,7 +4,7 @@
   "description": "Scan any URL to check if it's ready for AI agents",
   "main": "dist/index.js",
   "bin": {
-    "botvisibility": "./dist/index.js"
+    "botvisibility": "dist/index.js"
   },
   "files": [
     "dist",

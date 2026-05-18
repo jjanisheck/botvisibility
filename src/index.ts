@@ -27,7 +27,8 @@ function getLevelColor(levelNumber: number): string {
     case 1: return colors.red;
     case 2: return colors.yellow;
     case 3: return colors.green;
-    case 4: return colors.blue;
+    case 4: return colors.magenta;
+    case 5: return colors.blue;
     default: return colors.white;
   }
 }
@@ -42,7 +43,7 @@ ${colors.bold}USAGE${colors.reset}
 
 ${colors.bold}OPTIONS${colors.reset}
   --json        Output results as JSON (for CI/CD integration)
-  --repo <path> Include local repo analysis for deeper checks (unlocks Level 4)
+  --repo <path> Include local repo analysis for deeper checks (unlocks Level 5)
   --help, -h    Show this help message
 
 ${colors.bold}EXAMPLES${colors.reset}
@@ -52,17 +53,18 @@ ${colors.bold}EXAMPLES${colors.reset}
   ${colors.dim}# JSON output for CI/CD${colors.reset}
   npx botvisibility stripe.com --json
 
-  ${colors.dim}# Full scan with repo analysis (unlocks Level 4)${colors.reset}
+  ${colors.dim}# Full scan with repo analysis (unlocks Level 5)${colors.reset}
   npx botvisibility https://myapp.com --repo ./
 
   ${colors.dim}# Combined scan with JSON output${colors.reset}
   npx botvisibility clone.fyi --repo ../my-backend --json
 
 ${colors.bold}LEVELS${colors.reset}
-  ${colors.red}Level 1: Discoverable${colors.reset}   Bots can find you via machine-readable metadata (14 checks)
-  ${colors.yellow}Level 2: Usable${colors.reset}        Your API works for agents (9 checks, most require OpenAPI)
+  ${colors.red}Level 1: Discoverable${colors.reset}   Bots can find you via machine-readable metadata (18 checks)
+  ${colors.yellow}Level 2: Usable${colors.reset}        Your API works for agents (11 checks, most require OpenAPI)
   ${colors.green}Level 3: Optimized${colors.reset}     Your API minimizes token cost and handles scale (7 checks)
-  ${colors.blue}Level 4: Agent-Native${colors.reset}  Your platform treats AI agents as first-class users (7 checks, --repo required)
+  ${colors.magenta}Level 4: Indexable${colors.reset}     AI search systems can find, index, and ground answers (12 checks)
+  ${colors.blue}Level 5: Agent-Native${colors.reset}  Your platform treats AI agents as first-class users (7 checks, --repo required)
 
 ${colors.bold}LEARN MORE${colors.reset}
   https://botvisibility.com
@@ -90,12 +92,12 @@ function printLevelSection(
   const passed = checks.filter(c => c.status === 'pass').length;
   const naCount = checks.filter(c => c.status === 'na').length;
 
-  // Level 4 header when no --repo
-  if (levelNumber === 4 && !hasRepo) {
+  // Level 5 header when no --repo (Agent-Native checks require local repo)
+  if (levelNumber === 5 && !hasRepo) {
     console.log('');
     console.log(`${levelColor}${colors.bold}LEVEL ${levelNumber}: ${levelName.toUpperCase()}${colors.reset} ${colors.dim}(--repo required)${colors.reset}`);
     console.log(`${colors.dim}${'─'.repeat(55)}${colors.reset}`);
-    console.log(`  ${colors.dim}Run with --repo <path> to unlock Level 4 checks${colors.reset}`);
+    console.log(`  ${colors.dim}Run with --repo <path> to unlock Level 5 checks${colors.reset}`);
     return;
   }
 
@@ -162,6 +164,8 @@ function printResults(result: ScanResult, repoChecks?: RepoCheckResult[]) {
   } else if (currentLevel < 4) {
     const nextLevel = LEVELS[currentLevel]; // 0-indexed: currentLevel is the next one
     console.log(`  ${colors.dim}Level ${currentLevel} complete! Work on Level ${nextLevel.number}: ${nextLevel.name}.${colors.reset}`);
+  } else if (currentLevel === 4) {
+    console.log(`  ${colors.dim}Level 4 complete! Run with --repo to evaluate Level 5: Agent-Native.${colors.reset}`);
   } else {
     console.log(`  ${colors.green}All levels complete! Maximum agent visibility achieved.${colors.reset}`);
   }
@@ -172,7 +176,7 @@ function printResults(result: ScanResult, repoChecks?: RepoCheckResult[]) {
   for (const level of LEVELS) {
     const levelChecks = allChecks.filter(c => c.level === level.number);
 
-    if (level.number === 4 && !hasRepo) {
+    if (level.number === 5 && !hasRepo) {
       printLevelSection(level.number, level.name, [], false);
     } else if (levelChecks.length > 0) {
       printLevelSection(level.number, level.name, levelChecks, hasRepo);

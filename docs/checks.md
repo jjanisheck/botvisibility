@@ -1,12 +1,12 @@
 # Checks reference
 
-BotVisibility runs **37 checks** across 4 levels. This page describes each check, why it matters for AI agent token efficiency, and how to fix failures.
+BotVisibility runs **55 checks** across 5 levels. This page describes each check, why it matters for AI agent token efficiency, and how to fix failures.
 
 The canonical implementation lives in `src/scanner.ts` (web-based checks) and `src/repo-scanner.ts` (`--repo` code-based checks). Check IDs and definitions are listed in `src/scoring.ts`.
 
 ---
 
-## Level 1 — Discoverable (14 checks)
+## Level 1 — Discoverable (18 checks)
 
 Bots can find your site's capabilities without scraping HTML.
 
@@ -122,9 +122,41 @@ Bots can find your site's capabilities without scraping HTML.
 
 **How to fix:** Generate an RSS or Atom feed and link to it from your `<head>`.
 
+### 1.15 Content Signals
+
+**What it checks:** A `Content-Signal:` directive in `robots.txt` declaring AI usage preferences (`ai-train`, `search`, `ai-input`).
+
+**Why it matters:** Content Signals (contentsignals.org) give agents a single machine-readable place to learn what your site permits for training, search grounding, and inference.
+
+**How to fix:** Add `Content-Signal: search=yes, ai-train=no, ai-input=yes` (or your chosen policy) to `robots.txt`.
+
+### 1.16 API Catalog
+
+**What it checks:** An RFC 9727 API catalog linkset at `/.well-known/api-catalog` with `service-desc`, `service-doc`, and `status` link relations.
+
+**Why it matters:** Agents can discover every API you publish (and their OpenAPI specs) from a single well-known URL, skipping per-endpoint scraping.
+
+**How to fix:** Publish a JSON document under `Content-Type: application/linkset+json` with a top-level `linkset` array listing each API and its related resources.
+
+### 1.17 Markdown for Agents
+
+**What it checks:** Requests with `Accept: text/markdown` return a markdown rendering of the page (not HTML).
+
+**Why it matters:** Markdown is 5–10× smaller than the equivalent HTML, so agents get the page contents without paying the HTML tax.
+
+**How to fix:** Detect `Accept: text/markdown` on the homepage and (where applicable, other pages) and respond with a markdown body and `Content-Type: text/markdown`.
+
+### 1.18 WebMCP
+
+**What it checks:** The homepage calls `navigator.modelContext.provideContext()` to register in-browser tools for AI agents (WebMCP).
+
+**Why it matters:** WebMCP lets agents discover and use tools that live in your client-side app — without leaving the page or hitting a backend.
+
+**How to fix:** Call `navigator.modelContext.provideContext({ tools: [...] })` from your homepage JS to expose tools to embedded agents.
+
 ---
 
-## Level 2 — Usable (9 checks)
+## Level 2 — Usable (11 checks)
 
 Your API works for agents — auth, errors, and core operations.
 
@@ -200,6 +232,22 @@ Your API works for agents — auth, errors, and core operations.
 
 **How to fix:** Accept and honor an `Idempotency-Key` header on all POST/PUT/PATCH endpoints.
 
+### 2.10 OAuth Protected Resource
+
+**What it checks:** A `/.well-known/oauth-protected-resource` document (RFC 9728) advertising authorization servers and scopes.
+
+**Why it matters:** Agents can learn where to obtain tokens for your API in a single fetch, instead of guessing OAuth endpoints from documentation.
+
+**How to fix:** Publish a JSON document at `/.well-known/oauth-protected-resource` with `authorization_servers`, `scopes_supported`, and your `resource` identifier per RFC 9728.
+
+### 2.11 x402 Payments
+
+**What it checks:** A protected route returns HTTP 402 with a machine-readable `x402` payment-requirements body (`x402Version`, `accepts`, `paymentRequirements`).
+
+**Why it matters:** x402 is the emerging agent-native billing protocol — agents can pay for access automatically when the API responds in this format.
+
+**How to fix:** On paid routes, return HTTP 402 with a JSON body listing `accepts` payment schemes and the amounts/tokens involved.
+
 ---
 
 ## Level 3 — Optimized (7 checks)
@@ -264,11 +312,113 @@ Agents work efficiently. Pagination, filtering, caching, and tool quality reduce
 
 ---
 
-## Level 4 — Agent-Native (7 checks, `--repo` required)
+## Level 4 — Indexable (12 checks)
+
+AI search systems can find, crawl, index, and ground answers in your site. Most of these checks reuse the homepage HTML the scanner already fetched, so they add no extra round-trips.
+
+### 4.1 Googlebot Allowed
+
+**What it checks:** `robots.txt` does not `Disallow: /` for `Googlebot` (or `User-agent: *` without an explicit Googlebot override).
+
+**Why it matters:** AI search systems lean on the same crawl as traditional search. Blocking Googlebot blocks AI-grounding too.
+
+**How to fix:** Remove `Disallow: /` for Googlebot and `User-agent: *`, or add an explicit `User-agent: Googlebot` block that allows crawling.
+
+### 4.2 Google-Extended Policy
+
+**What it checks:** An explicit `User-agent: Google-Extended` block in `robots.txt` declaring your AI training/grounding policy.
+
+**Why it matters:** `Google-Extended` is the dedicated control for Google's AI products. Stating your policy explicitly avoids ambiguity.
+
+**How to fix:** Add a `User-agent: Google-Extended` block with `Allow:` or `Disallow:` directives reflecting your policy.
+
+### 4.3 Homepage Indexable
+
+**What it checks:** Homepage has no `noindex` meta tag and no `X-Robots-Tag: noindex` response header.
+
+**Why it matters:** A `noindex` directive removes the homepage from the search index entirely — no AI system can ground answers in it.
+
+**How to fix:** Remove the `noindex` meta or header from the homepage (keep it on staging environments only).
+
+### 4.4 Sitemap Present
+
+**What it checks:** A reachable `/sitemap.xml` and a `Sitemap:` directive in `robots.txt` pointing to it.
+
+**Why it matters:** Sitemaps let AI search systems discover every page without crawling the entire link graph.
+
+**How to fix:** Publish a valid `sitemap.xml` (or `sitemap_index.xml`) and reference it from `robots.txt`.
+
+### 4.5 HTTPS
+
+**What it checks:** The origin serves over HTTPS, and `http://` requests redirect to `https://`.
+
+**Why it matters:** Search engines deprioritize unencrypted sites and AI systems generally won't ground answers in them.
+
+**How to fix:** Issue a certificate (Let's Encrypt, ACME) and force-redirect all http traffic to https with a 301.
+
+### 4.6 Mobile Viewport
+
+**What it checks:** A `<meta name="viewport" content="width=device-width, ...">` tag in the homepage `<head>`.
+
+**Why it matters:** Mobile-first indexing means search systems evaluate the mobile rendering. No viewport tag = poor mobile rendering = lower index priority.
+
+**How to fix:** Add `<meta name="viewport" content="width=device-width, initial-scale=1">` to the homepage `<head>`.
+
+### 4.7 JSON-LD Present
+
+**What it checks:** At least one valid `<script type="application/ld+json">` block on the homepage.
+
+**Why it matters:** JSON-LD is the substrate for rich results and AI grounding — without it, search systems can only infer entity information from raw text.
+
+**How to fix:** Add a Schema.org JSON-LD block (start with `WebSite` and `Organization`) to the homepage `<head>`.
+
+### 4.8 Entity Schema
+
+**What it checks:** JSON-LD declares the site/business entity via `@type: Organization`, `WebSite`, or `LocalBusiness`.
+
+**Why it matters:** Entity schema is what links your site to a knowledge-graph entry. AI answers cite entities, not pages.
+
+**How to fix:** Add an `Organization` (or `WebSite` / `LocalBusiness`) JSON-LD block with `name`, `url`, `logo`, and `sameAs` links to your social/Wikipedia profiles.
+
+### 4.9 Canonical URL
+
+**What it checks:** A self-referential `<link rel="canonical">` on the homepage pointing to its own origin `/`.
+
+**Why it matters:** Canonical URLs prevent duplicate-content penalties and tell search systems which URL to attribute signals to.
+
+**How to fix:** Add `<link rel="canonical" href="https://yourdomain.com/">` to the homepage `<head>`.
+
+### 4.10 Heading Hierarchy
+
+**What it checks:** Exactly one `<h1>`, at least one `<h2>`, and no heading-level skips in the first 20 headings.
+
+**Why it matters:** Heading structure is a primary signal for how search systems outline your page — bad hierarchy yields bad excerpts.
+
+**How to fix:** Use exactly one `<h1>` per page, follow it with semantic `<h2>` sections, and don't skip levels (no `<h1>` → `<h3>`).
+
+### 4.11 Image Alt Coverage
+
+**What it checks:** At least 80% of `<img>` tags on the homepage have an `alt` attribute (including `alt=""` for decorative images).
+
+**Why it matters:** Alt text is what search systems and AI use to understand images. Missing alt text means the image is invisible to indexing.
+
+**How to fix:** Add descriptive `alt` text to every meaningful image; use `alt=""` for purely decorative ones.
+
+### 4.12 Substantive Content
+
+**What it checks:** The homepage carries at least 300 words of real content after stripping nav, footer, and scripts.
+
+**Why it matters:** Thin pages can't be grounded against. AI systems need substantive prose to extract claims and citations from.
+
+**How to fix:** Add a real description of what your product does, who it's for, and what makes it different — at least 300 words on the homepage.
+
+---
+
+## Level 5 — Agent-Native (7 checks, `--repo` required)
 
 First-class agent support. These checks scan your local source code and require the `--repo <path>` flag.
 
-### 4.1 Intent-Based Endpoints
+### 5.1 Intent-Based Endpoints
 
 **What it checks:** High-level action endpoints (e.g., `/send-invoice`, `/cancel-subscription`) in your route definitions, alongside CRUD primitives.
 
@@ -276,7 +426,7 @@ First-class agent support. These checks scan your local source code and require 
 
 **How to fix:** Add intent-shaped routes for your most common multi-step workflows.
 
-### 4.2 Agent Sessions
+### 5.2 Agent Sessions
 
 **What it checks:** Persistent session management for multi-step agent interactions in your code (session stores, context tracking).
 
@@ -284,7 +434,7 @@ First-class agent support. These checks scan your local source code and require 
 
 **How to fix:** Implement a session abstraction (Redis-backed or similar) that agents can attach to.
 
-### 4.3 Scoped Agent Tokens
+### 5.3 Scoped Agent Tokens
 
 **What it checks:** Agent-specific token issuance with capability limits in your auth configuration.
 
@@ -292,7 +442,7 @@ First-class agent support. These checks scan your local source code and require 
 
 **How to fix:** Implement a token-issuance flow where users can mint tokens with specific scopes for specific agents.
 
-### 4.4 Agent Audit Logs
+### 5.4 Agent Audit Logs
 
 **What it checks:** API actions logged with agent identifiers (e.g., `agent_id`, `actor_type: "agent"`) in your logging code.
 
@@ -300,7 +450,7 @@ First-class agent support. These checks scan your local source code and require 
 
 **How to fix:** Tag every authenticated request with the calling agent's identity in your audit log.
 
-### 4.5 Sandbox Environment
+### 5.5 Sandbox Environment
 
 **What it checks:** A separate test/sandbox environment for safe agent experimentation, declared in your config or docs.
 
@@ -308,7 +458,7 @@ First-class agent support. These checks scan your local source code and require 
 
 **How to fix:** Provision a sandbox environment with test credentials and document it.
 
-### 4.6 Consequence Labels
+### 5.6 Consequence Labels
 
 **What it checks:** Annotations marking irreversible or destructive actions in your route handlers, OpenAPI spec, or schema files.
 
@@ -316,7 +466,7 @@ First-class agent support. These checks scan your local source code and require 
 
 **How to fix:** Annotate destructive endpoints (e.g., `x-consequence: irreversible`) and/or label them in your docs.
 
-### 4.7 Native Tool Schemas
+### 5.7 Native Tool Schemas
 
 **What it checks:** Ready-to-use tool definitions for agent frameworks (OpenAI tools, Anthropic tool-use, MCP tool schemas) in your repo.
 
@@ -330,5 +480,5 @@ First-class agent support. These checks scan your local source code and require 
 
 - Web check definitions: `src/scoring.ts` (`CHECK_DEFINITIONS`)
 - Web check implementations: `src/scanner.ts`
-- L4 / `--repo` check definitions: `src/scoring.ts` (`CLI_CHECKS`)
-- L4 / `--repo` check implementations: `src/repo-scanner.ts`
+- L5 / `--repo` check definitions: `src/scoring.ts` (`CLI_CHECKS`)
+- L5 / `--repo` check implementations: `src/repo-scanner.ts`

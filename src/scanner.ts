@@ -1131,16 +1131,731 @@ export function checkPageTokenEfficiency(html: string | null, otherChecks?: Chec
   };
 }
 
+// --- Shared fetch helpers (used by new L1/L4 checks) ---
+
+export async function fetchRobotsTxt(baseUrl: string): Promise<string | null> {
+  try {
+    const res = await timedFetch(`${baseUrl}/robots.txt`, { headers: { 'Accept': 'text/plain' } });
+    if (res.ok) return await res.text();
+    return null;
+  } catch { return null; }
+}
+
+async function fetchHomepageData(baseUrl: string): Promise<{ html: string | null; xRobotsTag: string | null }> {
+  try {
+    const res = await timedFetch(baseUrl, { headers: { 'Accept': 'text/html' } });
+    if (res.ok) return { html: await res.text(), xRobotsTag: res.headers.get('x-robots-tag') };
+    return { html: null, xRobotsTag: null };
+  } catch { return { html: null, xRobotsTag: null }; }
+}
+
+function parseRobotsBlocks(robotsTxt: string): Array<{ agents: string[]; disallows: string[]; allows: string[] }> {
+  const lines = robotsTxt.split(/\r?\n/);
+  const blocks: Array<{ agents: string[]; disallows: string[]; allows: string[] }> = [];
+  let current: { agents: string[]; disallows: string[]; allows: string[] } | null = null;
+  let inDirective = false;
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/#.*/, '').trim();
+    if (!line) continue;
+    const m = line.match(/^([a-z-]+)\s*:\s*(.*)$/i);
+    if (!m) continue;
+    const key = m[1].toLowerCase();
+    const value = m[2].trim();
+    if (key === 'user-agent') {
+      if (!current || inDirective) {
+        current = { agents: [], disallows: [], allows: [] };
+        blocks.push(current);
+        inDirective = false;
+      }
+      current.agents.push(value.toLowerCase());
+    } else if (current) {
+      if (key === 'disallow') { current.disallows.push(value); inDirective = true; }
+      if (key === 'allow') { current.allows.push(value); inDirective = true; }
+    }
+  }
+  return blocks;
+}
+
+function extractJsonLdBlocks(html: string): unknown[] {
+  const blocks: unknown[] = [];
+  const re = /<script\s+[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    try { blocks.push(JSON.parse(m[1])); } catch { /* skip invalid */ }
+  }
+  return blocks;
+}
+
+// --- Level 1: 1.15 Content Signals ---
+
+export function checkContentSignals(robotsTxt: string | null): CheckResult {
+  if (robotsTxt === null) {
+    return {
+      id: '1.15', name: 'Content Signals', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: 'No robots.txt — cannot declare AI content preferences',
+      recommendation: 'Add a robots.txt with a Content-Signal directive (ai-train, search, ai-input). See contentsignals.org.',
+    };
+  }
+  const lower = robotsTxt.toLowerCase();
+  const hasDirective = /content-signal\s*:/i.test(robotsTxt);
+  const signals = ['ai-train', 'search', 'ai-input'].filter(s => lower.includes(s));
+  if (hasDirective && signals.length > 0) {
+    return {
+      id: '1.15', name: 'Content Signals', passed: true, status: 'pass', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: `Content-Signal directive declares ${signals.join(', ')}`,
+    };
+  }
+  if (hasDirective) {
+    return {
+      id: '1.15', name: 'Content Signals', passed: false, status: 'partial', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: 'Content-Signal directive found but no recognized signals',
+      recommendation: 'Declare ai-train, search, and/or ai-input values. See contentsignals.org.',
+    };
+  }
+  return {
+    id: '1.15', name: 'Content Signals', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+    message: 'No Content-Signal directive in robots.txt',
+    recommendation: 'Add Content-Signal: search=yes, ai-train=no (or similar) to robots.txt. See contentsignals.org.',
+  };
+}
+
+// --- Level 1: 1.16 API Catalog (RFC 9727) ---
+
+export async function checkApiCatalog(baseUrl: string): Promise<CheckResult> {
+  const url = `${baseUrl}/.well-known/api-catalog`;
+  try {
+    const res = await timedFetch(url, { headers: { 'Accept': 'application/linkset+json, application/json' } });
+    if (!res.ok) {
+      return {
+        id: '1.16', name: 'API Catalog', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+        message: 'No /.well-known/api-catalog found',
+        recommendation: 'Publish an RFC 9727 API catalog linkset at /.well-known/api-catalog listing your APIs.',
+      };
+    }
+    const text = await res.text();
+    const trimmed = text.trimStart();
+    if (trimmed.startsWith('<!') || trimmed.startsWith('<html')) {
+      return {
+        id: '1.16', name: 'API Catalog', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+        message: 'No /.well-known/api-catalog found',
+        recommendation: 'Publish an RFC 9727 API catalog linkset at /.well-known/api-catalog listing your APIs.',
+      };
+    }
+    let body: unknown;
+    try { body = JSON.parse(text); }
+    catch {
+      return {
+        id: '1.16', name: 'API Catalog', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+        message: '/.well-known/api-catalog exists but is not valid JSON', foundAt: url,
+      };
+    }
+    const linkset = (body as { linkset?: unknown[] }).linkset;
+    if (Array.isArray(linkset) && linkset.length > 0) {
+      const hasServiceDesc = JSON.stringify(linkset).includes('service-desc');
+      const status: 'pass' | 'partial' = hasServiceDesc ? 'pass' : 'partial';
+      return {
+        id: '1.16', name: 'API Catalog', passed: status === 'pass', status, level: 1, category: 'Discoverable', autoDetectable: true,
+        message: hasServiceDesc
+          ? `RFC 9727 API catalog found with ${linkset.length} entr${linkset.length === 1 ? 'y' : 'ies'}`
+          : 'API catalog found but no service-desc relation present',
+        foundAt: url,
+        recommendation: status === 'pass' ? undefined : 'Add service-desc, service-doc, and status link relations per RFC 9727.',
+      };
+    }
+    return {
+      id: '1.16', name: 'API Catalog', passed: false, status: 'partial', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: '/.well-known/api-catalog is JSON but missing the linkset array',
+      recommendation: 'Wrap entries under a top-level `linkset` array per RFC 9727.',
+      foundAt: url,
+    };
+  } catch {
+    return {
+      id: '1.16', name: 'API Catalog', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: 'Could not check /.well-known/api-catalog',
+    };
+  }
+}
+
+// --- Level 1: 1.17 Markdown for Agents ---
+
+export async function checkMarkdownForAgents(baseUrl: string): Promise<CheckResult> {
+  try {
+    const res = await timedFetch(baseUrl, { headers: { 'Accept': 'text/markdown' } });
+    if (!res.ok) {
+      return {
+        id: '1.17', name: 'Markdown for Agents', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+        message: 'No markdown rendering on the homepage',
+        recommendation: 'Serve markdown when Accept: text/markdown is requested so agents skip HTML overhead.',
+      };
+    }
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    const body = await res.text();
+    const trimmed = body.trimStart();
+    const looksLikeHtml = trimmed.startsWith('<!') || trimmed.startsWith('<html') || /<html|<body|<head/i.test(trimmed.slice(0, 400));
+    const isMarkdownByCT = contentType.includes('markdown') || contentType.includes('text/x-markdown');
+    const looksLikeMarkdown = !looksLikeHtml && (trimmed.startsWith('#') || /^[*-]\s/m.test(trimmed) || /\]\(https?:/.test(trimmed));
+    if (isMarkdownByCT || looksLikeMarkdown) {
+      return {
+        id: '1.17', name: 'Markdown for Agents', passed: true, status: 'pass', level: 1, category: 'Discoverable', autoDetectable: true,
+        message: 'Homepage returns markdown when Accept: text/markdown is requested',
+        details: `Content-Type: ${contentType || '(unspecified)'}`,
+      };
+    }
+    return {
+      id: '1.17', name: 'Markdown for Agents', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: 'Accept: text/markdown still returns HTML',
+      recommendation: 'Detect Accept: text/markdown and serve a markdown rendering of the page so agents skip HTML overhead.',
+    };
+  } catch {
+    return {
+      id: '1.17', name: 'Markdown for Agents', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: 'Could not probe markdown rendering',
+    };
+  }
+}
+
+// --- Level 1: 1.18 WebMCP ---
+
+export function checkWebMcp(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '1.18', name: 'WebMCP', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const matched =
+    /navigator\s*\.\s*modelContext\s*\.\s*provideContext\s*\(/i.test(html) ||
+    /navigator\[\s*['"]modelContext['"]\s*\]\s*\.\s*provideContext\s*\(/i.test(html);
+  if (matched) {
+    return {
+      id: '1.18', name: 'WebMCP', passed: true, status: 'pass', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: 'Homepage calls navigator.modelContext.provideContext()',
+    };
+  }
+  return {
+    id: '1.18', name: 'WebMCP', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+    message: 'No WebMCP provideContext() call detected',
+    recommendation: 'Use navigator.modelContext.provideContext({ tools: [...] }) to expose in-browser tools to AI agents.',
+  };
+}
+
+// --- Level 2: 2.10 OAuth Protected Resource (RFC 9728) ---
+
+export async function checkOAuthProtectedResource(baseUrl: string): Promise<CheckResult> {
+  const url = `${baseUrl}/.well-known/oauth-protected-resource`;
+  try {
+    const res = await timedFetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) {
+      return {
+        id: '2.10', name: 'OAuth Protected Resource', passed: false, status: 'na', level: 2, category: 'Usable', autoDetectable: true,
+        message: 'No /.well-known/oauth-protected-resource — not required if using API keys',
+      };
+    }
+    const text = await res.text();
+    const trimmed = text.trimStart();
+    if (trimmed.startsWith('<!') || trimmed.startsWith('<html')) {
+      return {
+        id: '2.10', name: 'OAuth Protected Resource', passed: false, status: 'na', level: 2, category: 'Usable', autoDetectable: true,
+        message: 'No /.well-known/oauth-protected-resource — not required if using API keys',
+      };
+    }
+    let body: Record<string, unknown>;
+    try { body = JSON.parse(text) as Record<string, unknown>; }
+    catch {
+      return {
+        id: '2.10', name: 'OAuth Protected Resource', passed: false, status: 'fail', level: 2, category: 'Usable', autoDetectable: true,
+        message: 'oauth-protected-resource exists but is invalid JSON', foundAt: url,
+      };
+    }
+    const hasAuthServers = Array.isArray(body.authorization_servers) && (body.authorization_servers as unknown[]).length > 0;
+    const hasScopes = Array.isArray(body.scopes_supported) || Array.isArray(body.scopes);
+    if (hasAuthServers) {
+      return {
+        id: '2.10', name: 'OAuth Protected Resource', passed: true, status: 'pass', level: 2, category: 'Usable', autoDetectable: true,
+        message: hasScopes
+          ? 'OAuth protected-resource advertises authorization servers and scopes'
+          : 'OAuth protected-resource advertises authorization servers',
+        foundAt: url,
+      };
+    }
+    return {
+      id: '2.10', name: 'OAuth Protected Resource', passed: false, status: 'partial', level: 2, category: 'Usable', autoDetectable: true,
+      message: 'oauth-protected-resource is missing authorization_servers',
+      recommendation: 'Add an authorization_servers array (and scopes_supported) per RFC 9728.',
+      foundAt: url,
+    };
+  } catch {
+    return {
+      id: '2.10', name: 'OAuth Protected Resource', passed: false, status: 'na', level: 2, category: 'Usable', autoDetectable: true,
+      message: 'Could not probe oauth-protected-resource',
+    };
+  }
+}
+
+// --- Level 2: 2.11 x402 Payments ---
+
+export async function checkX402Payments(baseUrl: string): Promise<CheckResult> {
+  const probes = ['/api/x402-probe', '/x402', '/.well-known/x402'];
+  for (const p of probes) {
+    try {
+      const res = await timedFetch(`${baseUrl}${p}`, { headers: { 'Accept': 'application/json' } });
+      if (res.status === 402) {
+        const text = await res.text();
+        const isX402 = /x402Version|"accepts"|"payTo"|paymentRequirements/i.test(text);
+        if (isX402) {
+          return {
+            id: '2.11', name: 'x402 Payments', passed: true, status: 'pass', level: 2, category: 'Usable', autoDetectable: true,
+            message: 'HTTP 402 returned with x402 payment requirements',
+            foundAt: `${baseUrl}${p}`,
+          };
+        }
+        return {
+          id: '2.11', name: 'x402 Payments', passed: false, status: 'partial', level: 2, category: 'Usable', autoDetectable: true,
+          message: 'HTTP 402 returned but body is not in x402 format',
+          recommendation: 'Return JSON with x402Version, accepts, and paymentRequirements per the x402 spec.',
+          foundAt: `${baseUrl}${p}`,
+        };
+      }
+    } catch { /* try next */ }
+  }
+  return {
+    id: '2.11', name: 'x402 Payments', passed: false, status: 'na', level: 2, category: 'Usable', autoDetectable: true,
+    message: 'No x402 payment endpoint detected — not required if you do not charge agents directly',
+    recommendation: 'Return HTTP 402 with machine-readable x402 paymentRequirements on protected routes if you want agent-native billing.',
+  };
+}
+
+// --- Level 4: 4.1 Googlebot Allowed ---
+
+export function checkGooglebotAllowed(robotsTxt: string | null): CheckResult {
+  if (robotsTxt === null) {
+    return {
+      id: '4.1', name: 'Googlebot Allowed', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'No robots.txt — Googlebot is unrestricted',
+    };
+  }
+  const blocks = parseRobotsBlocks(robotsTxt);
+  const blocksFor = (name: string) => blocks.filter(b => b.agents.includes(name));
+  const explicit = blocksFor('googlebot');
+  const target = explicit.length > 0 ? explicit : blocksFor('*');
+  const blocksAll = target.some(b => b.disallows.includes('/'));
+  if (blocksAll) {
+    return {
+      id: '4.1', name: 'Googlebot Allowed', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'robots.txt disallows / for Googlebot (or all agents)',
+      recommendation: 'Remove the Disallow: / rule for Googlebot and User-agent: * so AI search systems can index the site.',
+    };
+  }
+  return {
+    id: '4.1', name: 'Googlebot Allowed', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'Googlebot is permitted in robots.txt',
+  };
+}
+
+// --- Level 4: 4.2 Google-Extended Policy ---
+
+export function checkGoogleExtendedPolicy(robotsTxt: string | null): CheckResult {
+  if (robotsTxt === null) {
+    return {
+      id: '4.2', name: 'Google-Extended Policy', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'No robots.txt — no Google-Extended policy declared',
+      recommendation: 'Add a User-agent: Google-Extended block to robots.txt declaring your AI training/grounding policy.',
+    };
+  }
+  const blocks = parseRobotsBlocks(robotsTxt);
+  const ge = blocks.filter(b => b.agents.includes('google-extended'));
+  if (ge.length > 0) {
+    return {
+      id: '4.2', name: 'Google-Extended Policy', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Explicit User-agent: Google-Extended block found',
+    };
+  }
+  return {
+    id: '4.2', name: 'Google-Extended Policy', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'No User-agent: Google-Extended block in robots.txt',
+    recommendation: 'Add an explicit User-agent: Google-Extended block (Allow or Disallow) to declare your AI grounding policy.',
+  };
+}
+
+// --- Level 4: 4.3 Homepage Indexable ---
+
+export function checkHomepageIndexable(html: string | null, xRobotsTag: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.3', name: 'Homepage Indexable', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const headerHasNoindex = !!xRobotsTag && /noindex/i.test(xRobotsTag);
+  const metaHasNoindex =
+    /<meta\s+[^>]*name=["']robots["'][^>]*content=["'][^"']*noindex[^"']*["']/i.test(html) ||
+    /<meta\s+[^>]*content=["'][^"']*noindex[^"']*["'][^>]*name=["']robots["']/i.test(html);
+  if (headerHasNoindex || metaHasNoindex) {
+    const sources = [
+      headerHasNoindex ? 'X-Robots-Tag header' : null,
+      metaHasNoindex ? '<meta name="robots">' : null,
+    ].filter(Boolean).join(' + ');
+    return {
+      id: '4.3', name: 'Homepage Indexable', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: `Homepage declares noindex via ${sources}`,
+      recommendation: 'Remove the noindex directive so the homepage can appear in search and AI-grounding results.',
+    };
+  }
+  return {
+    id: '4.3', name: 'Homepage Indexable', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'Homepage is eligible for indexing',
+  };
+}
+
+// --- Level 4: 4.4 Sitemap Present ---
+
+export async function checkSitemapPresent(baseUrl: string, robotsTxt: string | null): Promise<CheckResult> {
+  let sitemapInRobots: string | null = null;
+  if (robotsTxt) {
+    const m = robotsTxt.match(/sitemap\s*:\s*(\S+)/i);
+    if (m) sitemapInRobots = m[1];
+  }
+  try {
+    const res = await timedFetch(`${baseUrl}/sitemap.xml`, { headers: { 'Accept': 'application/xml, text/xml' } });
+    if (res.ok) {
+      const body = await res.text();
+      const looksLikeSitemap = body.includes('<urlset') || body.includes('<sitemapindex') || body.trimStart().startsWith('<?xml');
+      if (looksLikeSitemap) {
+        const status: 'pass' | 'partial' = sitemapInRobots ? 'pass' : 'partial';
+        return {
+          id: '4.4', name: 'Sitemap Present', passed: status === 'pass', status, level: 4, category: 'Indexable', autoDetectable: true,
+          message: sitemapInRobots
+            ? 'sitemap.xml reachable and referenced from robots.txt'
+            : 'sitemap.xml reachable (consider also referencing it from robots.txt)',
+          foundAt: `${baseUrl}/sitemap.xml`,
+          recommendation: sitemapInRobots ? undefined : 'Add a Sitemap: directive to robots.txt pointing at your sitemap.',
+        };
+      }
+    }
+  } catch { /* fall through */ }
+  if (sitemapInRobots) {
+    return {
+      id: '4.4', name: 'Sitemap Present', passed: false, status: 'partial', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'robots.txt declares a Sitemap but it could not be fetched',
+      details: sitemapInRobots,
+      recommendation: 'Verify the sitemap URL responds with valid XML.',
+    };
+  }
+  return {
+    id: '4.4', name: 'Sitemap Present', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'No sitemap.xml found',
+    recommendation: 'Publish a sitemap.xml and reference it from robots.txt (Sitemap: directive).',
+  };
+}
+
+// --- Level 4: 4.5 HTTPS ---
+
+export async function checkHttps(baseUrl: string): Promise<CheckResult> {
+  if (!baseUrl.toLowerCase().startsWith('https://')) {
+    return {
+      id: '4.5', name: 'HTTPS', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Origin does not use HTTPS',
+      recommendation: 'Serve the site over HTTPS and redirect http requests.',
+    };
+  }
+  const httpUrl = baseUrl.replace(/^https:\/\//i, 'http://');
+  try {
+    const res = await timedFetch(httpUrl, { method: 'GET', redirect: 'manual' });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location') || '';
+      if (/^https:\/\//i.test(location)) {
+        return {
+          id: '4.5', name: 'HTTPS', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+          message: 'http requests redirect to https', details: `Location: ${location}`,
+        };
+      }
+      return {
+        id: '4.5', name: 'HTTPS', passed: false, status: 'partial', level: 4, category: 'Indexable', autoDetectable: true,
+        message: 'http responds with a redirect that does not target https',
+        recommendation: 'Redirect http → https with a 301 Location header.',
+      };
+    }
+    if (res.status >= 200 && res.status < 300) {
+      return {
+        id: '4.5', name: 'HTTPS', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+        message: 'Origin serves content over http without redirecting',
+        recommendation: 'Force HTTPS by redirecting all http requests with a 301.',
+      };
+    }
+    return {
+      id: '4.5', name: 'HTTPS', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Origin is https-only (http requests rejected)',
+    };
+  } catch {
+    return {
+      id: '4.5', name: 'HTTPS', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Origin is https-only (http connection refused)',
+    };
+  }
+}
+
+// --- Level 4: 4.6 Mobile Viewport ---
+
+export function checkMobileViewport(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.6', name: 'Mobile Viewport', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const m =
+    /<meta\s+[^>]*name=["']viewport["'][^>]*content=["']([^"']+)["']/i.exec(html) ||
+    /<meta\s+[^>]*content=["']([^"']+)["'][^>]*name=["']viewport["']/i.exec(html);
+  if (m && /width\s*=\s*device-width/i.test(m[1])) {
+    return {
+      id: '4.6', name: 'Mobile Viewport', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Mobile viewport meta tag present', details: m[1],
+    };
+  }
+  return {
+    id: '4.6', name: 'Mobile Viewport', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'No mobile viewport meta tag with width=device-width',
+    recommendation: 'Add <meta name="viewport" content="width=device-width, initial-scale=1"> to the <head>.',
+  };
+}
+
+// --- Level 4: 4.7 JSON-LD Present ---
+
+export function checkJsonLdPresent(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.7', name: 'JSON-LD Present', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const blocks = extractJsonLdBlocks(html);
+  if (blocks.length > 0) {
+    return {
+      id: '4.7', name: 'JSON-LD Present', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: `Found ${blocks.length} valid JSON-LD script block${blocks.length === 1 ? '' : 's'}`,
+    };
+  }
+  return {
+    id: '4.7', name: 'JSON-LD Present', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'No valid JSON-LD script blocks on the homepage',
+    recommendation: 'Add <script type="application/ld+json"> blocks with Schema.org markup so search engines can ground answers.',
+  };
+}
+
+// --- Level 4: 4.8 Entity Schema ---
+
+export function checkEntitySchema(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.8', name: 'Entity Schema', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const blocks = extractJsonLdBlocks(html);
+  const entityTypes = ['Organization', 'WebSite', 'LocalBusiness'];
+  const found = new Set<string>();
+  const collectTypes = (node: unknown) => {
+    if (!node) return;
+    if (Array.isArray(node)) { node.forEach(collectTypes); return; }
+    if (typeof node === 'object') {
+      const obj = node as Record<string, unknown>;
+      const t = obj['@type'];
+      if (typeof t === 'string' && entityTypes.includes(t)) found.add(t);
+      if (Array.isArray(t)) {
+        for (const v of t) if (typeof v === 'string' && entityTypes.includes(v)) found.add(v);
+      }
+      const graph = obj['@graph'];
+      if (Array.isArray(graph)) graph.forEach(collectTypes);
+    }
+  };
+  blocks.forEach(collectTypes);
+  if (found.size > 0) {
+    return {
+      id: '4.8', name: 'Entity Schema', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: `Found entity schema (${Array.from(found).join(', ')})`,
+    };
+  }
+  return {
+    id: '4.8', name: 'Entity Schema', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'No Organization, WebSite, or LocalBusiness entity in JSON-LD',
+    recommendation: 'Add a JSON-LD block with @type: Organization (or WebSite/LocalBusiness) for entity grounding.',
+  };
+}
+
+// --- Level 4: 4.9 Canonical URL ---
+
+export function checkCanonicalUrl(html: string | null, baseUrl: string): CheckResult {
+  if (!html) {
+    return {
+      id: '4.9', name: 'Canonical URL', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const m =
+    /<link\s+[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i.exec(html) ||
+    /<link\s+[^>]*href=["']([^"']+)["'][^>]*rel=["']canonical["']/i.exec(html);
+  if (!m) {
+    return {
+      id: '4.9', name: 'Canonical URL', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'No <link rel="canonical"> on the homepage',
+      recommendation: 'Add <link rel="canonical" href="https://yourdomain.com/"> to the <head>.',
+    };
+  }
+  let canonicalUrl: URL;
+  try {
+    canonicalUrl = new URL(m[1], baseUrl);
+  } catch {
+    return {
+      id: '4.9', name: 'Canonical URL', passed: false, status: 'partial', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Canonical link is not a valid URL', details: m[1],
+    };
+  }
+  const baseHost = new URL(baseUrl).hostname;
+  const sameOrigin = canonicalUrl.hostname === baseHost;
+  const rootPath = canonicalUrl.pathname === '/' || canonicalUrl.pathname === '';
+  if (sameOrigin && rootPath) {
+    return {
+      id: '4.9', name: 'Canonical URL', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Self-referential canonical URL on the homepage', details: canonicalUrl.toString(),
+    };
+  }
+  if (sameOrigin) {
+    return {
+      id: '4.9', name: 'Canonical URL', passed: false, status: 'partial', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Canonical points to a different path on the same origin', details: canonicalUrl.toString(),
+      recommendation: 'Self-reference the homepage so the origin / is canonical.',
+    };
+  }
+  return {
+    id: '4.9', name: 'Canonical URL', passed: false, status: 'partial', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'Canonical URL points off-origin', details: canonicalUrl.toString(),
+    recommendation: 'Canonical should target this origin\'s homepage.',
+  };
+}
+
+// --- Level 4: 4.10 Heading Hierarchy ---
+
+export function checkHeadingHierarchy(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.10', name: 'Heading Hierarchy', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const headings: number[] = [];
+  const re = /<h([1-6])\b[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) headings.push(parseInt(m[1], 10));
+  if (headings.length === 0) {
+    return {
+      id: '4.10', name: 'Heading Hierarchy', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'No heading tags found',
+      recommendation: 'Use semantic <h1>-<h6> headings so search engines and agents can outline the page.',
+    };
+  }
+  const h1Count = headings.filter(h => h === 1).length;
+  const h2Count = headings.filter(h => h === 2).length;
+  const first20 = headings.slice(0, 20);
+  let skip = false;
+  for (let i = 1; i < first20.length; i++) {
+    if (first20[i] > first20[i - 1] + 1) { skip = true; break; }
+  }
+  const issues: string[] = [];
+  if (h1Count !== 1) issues.push(`${h1Count} h1 tags (expected exactly 1)`);
+  if (h2Count < 1) issues.push('no h2 tags');
+  if (skip) issues.push('heading level skips detected');
+  if (issues.length === 0) {
+    return {
+      id: '4.10', name: 'Heading Hierarchy', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: `Heading hierarchy is clean (1 h1, ${h2Count} h2)`,
+    };
+  }
+  return {
+    id: '4.10', name: 'Heading Hierarchy', passed: false, status: issues.length === 1 ? 'partial' : 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: `Heading hierarchy issues: ${issues.join('; ')}`,
+    recommendation: 'Use exactly one h1, at least one h2, and avoid skipping heading levels.',
+  };
+}
+
+// --- Level 4: 4.11 Image Alt Coverage ---
+
+export function checkImageAltCoverage(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.11', name: 'Image Alt Coverage', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const imgs = html.match(/<img\b[^>]*>/gi) || [];
+  if (imgs.length === 0) {
+    return {
+      id: '4.11', name: 'Image Alt Coverage', passed: false, status: 'na', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'No images on the homepage — not applicable',
+    };
+  }
+  const withAlt = imgs.filter(tag => /\salt\s*=/i.test(tag));
+  const ratio = withAlt.length / imgs.length;
+  if (ratio >= 0.8) {
+    return {
+      id: '4.11', name: 'Image Alt Coverage', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: `${withAlt.length}/${imgs.length} images have alt attributes (${Math.round(ratio * 100)}%)`,
+    };
+  }
+  return {
+    id: '4.11', name: 'Image Alt Coverage', passed: false, status: ratio >= 0.5 ? 'partial' : 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: `Only ${withAlt.length}/${imgs.length} images have alt attributes (${Math.round(ratio * 100)}%)`,
+    recommendation: 'Add alt text to every <img> (use alt="" for purely decorative images).',
+  };
+}
+
+// --- Level 4: 4.12 Substantive Content ---
+
+export function checkSubstantiveContent(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.12', name: 'Substantive Content', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const stripped = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<footer\b[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<header\b[\s\S]*?<\/header>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const wordCount = stripped.length === 0 ? 0 : stripped.split(/\s+/).length;
+  if (wordCount >= 300) {
+    return {
+      id: '4.12', name: 'Substantive Content', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: `${wordCount} words of substantive content`,
+    };
+  }
+  return {
+    id: '4.12', name: 'Substantive Content', passed: false, status: wordCount >= 150 ? 'partial' : 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: `Only ${wordCount} words of substantive content (need >=300)`,
+    recommendation: 'Add at least 300 words of real content to the homepage so it carries meaning for indexing and AI grounding.',
+  };
+}
+
 // --- Run All Checks ---
 
 export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
-  // First, fetch OpenAPI spec and homepage HTML (used by many checks)
-  const [spec, homepageHtml] = await Promise.all([
+  // Fetch shared resources once
+  const [spec, homepage, robotsTxt] = await Promise.all([
     fetchOpenApiSpec(baseUrl),
-    fetchHomepageHtml(baseUrl),
+    fetchHomepageData(baseUrl),
+    fetchRobotsTxt(baseUrl),
   ]);
+  const homepageHtml = homepage.html;
+  const xRobotsTag = homepage.xRobotsTag;
 
-  // Level 1 checks (parallel) — 13 discovery checks (token efficiency added after)
+  // Level 1 checks (17 — token efficiency added after so it can apply mitigations)
   const level1Base = await Promise.all([
     checkLlmsTxt(baseUrl),
     checkAgentCard(baseUrl),
@@ -1155,13 +1870,15 @@ export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
     Promise.resolve(checkLinkHeaders(homepageHtml)),
     checkMcpServer(baseUrl),
     checkRssFeed(homepageHtml, baseUrl),
+    Promise.resolve(checkContentSignals(robotsTxt)),
+    checkApiCatalog(baseUrl),
+    checkMarkdownForAgents(baseUrl),
+    Promise.resolve(checkWebMcp(homepageHtml)),
   ]);
-
-  // Token efficiency runs after other L1 checks so it can apply mitigations
   const tokenEfficiency = checkPageTokenEfficiency(homepageHtml, level1Base);
   const level1 = [...level1Base, tokenEfficiency];
 
-  // Level 2 checks (mix of sync spec-dependent + async network)
+  // Level 2 checks
   const level2 = await Promise.all([
     Promise.resolve(checkApiReadOps(spec)),
     Promise.resolve(checkApiWriteOps(spec)),
@@ -1172,9 +1889,11 @@ export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
     checkStructuredErrors(baseUrl),
     Promise.resolve(checkAsyncOps(spec)),
     Promise.resolve(checkIdempotency(spec)),
+    checkOAuthProtectedResource(baseUrl),
+    checkX402Payments(baseUrl),
   ]);
 
-  // Level 3 checks (mix of sync spec-dependent + async network)
+  // Level 3 checks
   const level3 = await Promise.all([
     Promise.resolve(checkSparseFields(spec)),
     Promise.resolve(checkCursorPagination(spec)),
@@ -1185,5 +1904,21 @@ export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
     checkMcpToolQuality(baseUrl),
   ]);
 
-  return [...level1, ...level2, ...level3];
+  // Level 4: Indexable
+  const level4 = await Promise.all([
+    Promise.resolve(checkGooglebotAllowed(robotsTxt)),
+    Promise.resolve(checkGoogleExtendedPolicy(robotsTxt)),
+    Promise.resolve(checkHomepageIndexable(homepageHtml, xRobotsTag)),
+    checkSitemapPresent(baseUrl, robotsTxt),
+    checkHttps(baseUrl),
+    Promise.resolve(checkMobileViewport(homepageHtml)),
+    Promise.resolve(checkJsonLdPresent(homepageHtml)),
+    Promise.resolve(checkEntitySchema(homepageHtml)),
+    Promise.resolve(checkCanonicalUrl(homepageHtml, baseUrl)),
+    Promise.resolve(checkHeadingHierarchy(homepageHtml)),
+    Promise.resolve(checkImageAltCoverage(homepageHtml)),
+    Promise.resolve(checkSubstantiveContent(homepageHtml)),
+  ]);
+
+  return [...level1, ...level2, ...level3, ...level4];
 }

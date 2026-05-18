@@ -73,6 +73,6 @@ Combine with PR comments or Slack notifications to alert on regressions per-chec
 
 ## Tips
 
-- Pin the CLI version (`npx -y botvisibility@1.3.1 ...`) in CI to avoid surprise behavior changes.
-- Use the `--repo .` flag in CI when you also want Level 4 code-level checks. Run from the repo root so the scanner can walk the source tree.
+- Pin the CLI version (`npx -y botvisibility@2.0.0 ...`) in CI to avoid surprise behavior changes.
+- Use the `--repo .` flag in CI when you also want Level 5 (Agent-Native) code-level checks. Run from the repo root so the scanner can walk the source tree.
 - BotVisibility makes outbound HTTP requests; in air-gapped CI runners you'll need to whitelist the target domain.

@@ -1,7 +1,9 @@
-// Core types for agent-readiness scanning — 4-level model
+// Core types for agent-readiness scanning — 5-level model
+
+export type LevelNumber = 1 | 2 | 3 | 4 | 5;
 
 export interface Level {
-  number: 1 | 2 | 3 | 4;
+  number: LevelNumber;
   name: string;
   description: string;
   color: string;
@@ -21,7 +23,7 @@ export interface CheckResult {
   name: string;
   passed: boolean;
   status: 'pass' | 'fail' | 'partial' | 'na';
-  level: 1 | 2 | 3 | 4;
+  level: LevelNumber;
   category: string;
   autoDetectable: boolean;
   message: string;
@@ -33,7 +35,7 @@ export interface CheckResult {
 export interface CliCheck {
   id: string;
   name: string;
-  level: 4;
+  level: 5;
   category: 'Agent-Native';
   description: string;
   whyCliOnly: string;

@@ -40,9 +40,9 @@ afterEach(() => {
   }
 });
 
-// --- Level 4: Agent-Native (every one of these was previously untested) ---
+// --- Level 5: Agent-Native (every one of these was previously untested) ---
 
-describe('L4 checkIntentEndpoints pattern thresholds', () => {
+describe('L5 checkIntentEndpoints pattern thresholds', () => {
   it('fails with no matching patterns', () => {
     const repo = makeRepo({ 'src/app.ts': 'const handler = () => {};\n' });
     expect(checkIntentEndpoints(repo).status).toBe('fail');
@@ -69,7 +69,7 @@ app.post('/process-payment', handler);
   });
 });
 
-describe('L4 checkAgentSessions', () => {
+describe('L5 checkAgentSessions', () => {
   it('fails on an empty repo', () => {
     const repo = makeRepo({ 'README.md': '# hi\n' });
     expect(checkAgentSessions(repo).status).toBe('fail');
@@ -84,7 +84,7 @@ describe('L4 checkAgentSessions', () => {
   });
 });
 
-describe('L4 checkScopedAgentTokens', () => {
+describe('L5 checkScopedAgentTokens', () => {
   it('fails on empty repo', () => {
     const repo = makeRepo({ 'index.js': '// nothing\n' });
     expect(checkScopedAgentTokens(repo).status).toBe('fail');
@@ -98,7 +98,7 @@ describe('L4 checkScopedAgentTokens', () => {
   });
 });
 
-describe('L4 checkAgentAuditLogs', () => {
+describe('L5 checkAgentAuditLogs', () => {
   it('fails when no agent-identified logging is present', () => {
     const repo = makeRepo({ 'src/log.ts': 'console.log("hi");\n' });
     expect(checkAgentAuditLogs(repo).status).toBe('fail');
@@ -112,7 +112,7 @@ describe('L4 checkAgentAuditLogs', () => {
   });
 });
 
-describe('L4 checkSandboxEnvironment', () => {
+describe('L5 checkSandboxEnvironment', () => {
   it('fails with no sandbox config or patterns', () => {
     const repo = makeRepo({ 'src/index.ts': 'export {};\n' });
     expect(checkSandboxEnvironment(repo).status).toBe('fail');
@@ -131,7 +131,7 @@ describe('L4 checkSandboxEnvironment', () => {
   });
 });
 
-describe('L4 checkConsequenceLabels', () => {
+describe('L5 checkConsequenceLabels', () => {
   it('fails when no consequence annotations exist', () => {
     const repo = makeRepo({ 'openapi.yaml': 'openapi: 3.0.0\n' });
     expect(checkConsequenceLabels(repo).status).toBe('fail');
@@ -150,7 +150,7 @@ paths:
   });
 });
 
-describe('L4 checkNativeToolSchemas three-way classification', () => {
+describe('L5 checkNativeToolSchemas three-way classification', () => {
   it('fails when nothing tool-related is present', () => {
     const repo = makeRepo({ 'README.md': '# nothing\n' });
     expect(checkNativeToolSchemas(repo).status).toBe('fail');

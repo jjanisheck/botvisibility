@@ -1,7 +1,7 @@
 {
   "name": "botvisibility",
-  "version": "1.3.2",
-  "description": "Scan any URL to check if it's ready for AI agents",
+  "version": "2.0.0",
+  "description": "Lighthouse for AI agents — scan any URL across 55 checks and 5 levels (Discoverable, Usable, Optimized, Indexable, Agent-Native) to see how ready it is for Claude, GPT, and autonomous agent frameworks.",
   "main": "dist/index.js",
   "bin": {
     "botvisibility": "dist/index.js"
@@ -23,6 +23,7 @@
   "keywords": [
     "ai",
     "agents",
+    "agent-native",
     "llm",
     "openapi",
     "llms.txt",
@@ -30,7 +31,14 @@
     "api",
     "scanner",
     "audit",
-    "mcp"
+    "mcp",
+    "webmcp",
+    "x402",
+    "content-signals",
+    "indexable",
+    "seo",
+    "ai-seo",
+    "ai-search"
   ],
   "author": "Joey Janisheck",
   "license": "MIT",

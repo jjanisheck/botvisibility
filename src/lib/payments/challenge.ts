@@ -19,6 +19,15 @@ import { loadPaymentConfig, getPricingTier } from './config';
 // Base Sepolia RPC for testnet verification
 const BASE_SEPOLIA_RPC = 'https://sepolia.base.org';
 
+// Base mainnet RPC for on-chain verification
+const BASE_MAINNET_RPC = 'https://mainnet.base.org';
+
+// Coinbase x402 facilitator endpoint
+const X402_FACILITATOR_URL = 'https://x402.org/facilitator';
+
+// USDC contract address on Base mainnet (6 decimals)
+const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+
 // ============================================================================
 // Challenge Generation
 // ============================================================================
@@ -193,10 +202,34 @@ function buildWWWAuthenticateHeader(challenge: X402PaymentChallenge): string {
 // ============================================================================
 
 /**
- * Extract payment proof from request headers
+ * Extract payment proof from request headers.
+ * Handles three formats:
+ *   1. X-PAYMENT header — native x402 PaymentPayload (base64 JSON)
+ *   2. X-Payment-Proof header — our legacy JSON proof
+ *   3. Authorization: X402 <base64> — our legacy base64-encoded proof
  */
 export function extractPaymentProof(request: Request): X402PaymentProof | null {
-  // Check X-Payment-Proof header (primary method)
+  // x402 native: X-PAYMENT header carries base64-encoded PaymentPayload
+  const nativeHeader = request.headers.get('X-PAYMENT');
+  if (nativeHeader) {
+    try {
+      const payload = JSON.parse(atob(nativeHeader));
+      // x402 PaymentPayload carries authorization.from as sender
+      const sender: string = payload?.authorization?.from ?? payload?.from ?? '';
+      const syntheticProof: X402PaymentProof = {
+        paymentId: payload?.paymentId ?? '',
+        network: 'base',
+        transactionHash: '',
+        sender,
+        rawX402Payload: nativeHeader,
+      };
+      if (syntheticProof.rawX402Payload) return syntheticProof;
+    } catch {
+      // fall through
+    }
+  }
+
+  // Check X-Payment-Proof header (legacy method)
   const proofHeader = request.headers.get('X-Payment-Proof');
   if (proofHeader) {
     try {
@@ -209,7 +242,7 @@ export function extractPaymentProof(request: Request): X402PaymentProof | null {
     }
   }
 
-  // Check Authorization header with X402 scheme
+  // Check Authorization header with X402 scheme (legacy method)
   const authHeader = request.headers.get('Authorization');
   if (authHeader?.startsWith('X402 ')) {
     try {
@@ -290,7 +323,7 @@ export async function verifyPaymentProof(
   }
 
   // Real testnet verification via Base Sepolia RPC
-  if (proof.network === 'testnet' || proof.network === 'base') {
+  if (proof.network === 'testnet' || proof.network === 'base' || proof.network === 'base-sepolia') {
     return verifyOnBaseSepolia(proof, expectedChallenge);
   }
 
@@ -377,15 +410,13 @@ async function verifyOnBaseSepolia(
       verifiedAt: new Date().toISOString(),
     };
   } catch (err) {
-    // RPC unreachable — fall back to mock acceptance so the demo still runs
+    // Only fall back on genuine network timeout — not as a default for any provider
     const isNetworkError = err instanceof TypeError || (err instanceof Error && err.message.includes('timeout'));
-    if (isNetworkError || config.provider.provider === 'mock') {
+    if (isNetworkError) {
       return {
-        valid: true,
-        status: 'confirmed',
-        confirmations: 0,
-        verifiedAmount: expectedChallenge.paymentOptions[0]?.amount ?? '0',
-        verifiedAt: new Date().toISOString(),
+        valid: false,
+        status: 'failed',
+        reason: 'RPC connection timeout — Base Sepolia unreachable, retry later',
       };
     }
 

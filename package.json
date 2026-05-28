@@ -1,30 +1,63 @@
 {
-  "name": "agent-readiness-audit-web",
-  "version": "1.0.0",
-  "private": true,
+  "name": "botvisibility",
+  "version": "2.0.0",
+  "description": "Lighthouse for AI agents — scan any URL across 55 checks and 5 levels (Discoverable, Usable, Optimized, Indexable, Agent-Native) to see how ready it is for Claude, GPT, and autonomous agent frameworks.",
+  "main": "dist/index.js",
+  "bin": {
+    "botvisibility": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "cli:build": "cd cli && npm run build",
-    "cli:dev": "cd cli && npm run dev"
+    "build": "tsc",
+    "dev": "tsc -w",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run build && npm test"
   },
-  "dependencies": {
-    "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "x402": "^1.2.0"
+  "keywords": [
+    "ai",
+    "agents",
+    "agent-native",
+    "llm",
+    "openapi",
+    "llms.txt",
+    "agent-card",
+    "api",
+    "scanner",
+    "audit",
+    "mcp",
+    "webmcp",
+    "x402",
+    "content-signals",
+    "indexable",
+    "seo",
+    "ai-seo",
+    "ai-search"
+  ],
+  "author": "Joey Janisheck",
+  "license": "MIT",
+  "homepage": "https://botvisibility.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jjanisheck/botvisibility.git"
   },
+  "bugs": {
+    "url": "https://github.com/jjanisheck/botvisibility/issues"
+  },
+  "dependencies": {},
   "devDependencies": {
-    "@netlify/plugin-nextjs": "^5.15.9",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

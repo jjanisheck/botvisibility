@@ -38,6 +38,9 @@ yarn-error.log*
 .mcp.json
 .swarm/
 .superpowers/
+agentdb.rvf
+agentdb.rvf.lock
+tasks/
 
 # Git worktrees
 .worktrees/

@@ -1,6 +1,6 @@
 {
   "name": "botvisibility",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Lighthouse for AI agents — scan any URL across 55 checks and 5 levels (Discoverable, Usable, Optimized, Indexable, Agent-Native) to see how ready it is for Claude, GPT, and autonomous agent frameworks.",
   "main": "dist/index.js",
   "bin": {

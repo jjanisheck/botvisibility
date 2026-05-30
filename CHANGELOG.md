@@ -2,6 +2,14 @@
 
 All notable changes to the BotVisibility CLI are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-05-30
+
+Maintenance release. No CLI behavior or check changes — `2.0.0` and `2.0.1` scan identically.
+
+### Fixed
+
+- The `2.0.0` merge accidentally re-introduced the Next.js website (which lives in a separate repository) into this CLI-only repo, leaving its sources and config under a `tsc`-built package. This broke CI — `tsc` could not resolve `next/server` or the `@/*` alias. Removed the web app entirely (`src/app`, `src/lib`, Next/Netlify/PostCSS/ESLint config, `public/` assets, the stale nested `cli/` copy, and the x402 demo script) so the build compiles only CLI sources and CI is green again.
+
 ## [2.0.0] - 2026-05-18
 
 Expanded the checklist from 37 → 55 checks across **5 levels** to match the published `botvisibility.com` catalog. This is a breaking change for JSON consumers because Agent-Native check IDs shift from `4.x` to `5.x`.

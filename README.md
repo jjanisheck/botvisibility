@@ -82,7 +82,7 @@ Every unoptimized interaction costs AI agents extra tokens. At Claude Sonnet 4.6
 
 ## Changelog
 
-Release notes for every version live in [`CHANGELOG.md`](https://github.com/jjanisheck/botvisibility/blob/main/CHANGELOG.md). Latest: **2.0.0** — expanded to 55 checks across 5 levels (Level 4 Indexable is new; Agent-Native IDs shifted from `4.x` to `5.x` — breaking).
+Release notes for every version live in [`CHANGELOG.md`](https://github.com/jjanisheck/botvisibility/blob/main/CHANGELOG.md). Latest: **2.0.1** — maintenance release (CLI-only repo cleanup, CI fix); scans identically to **2.0.0**, which expanded to 55 checks across 5 levels (Level 4 Indexable is new; Agent-Native IDs shifted from `4.x` to `5.x` — breaking).
 
 ## Contributing
 

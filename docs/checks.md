@@ -482,3 +482,17 @@ First-class agent support. These checks scan your local source code and require 
 - Web check implementations: `src/scanner.ts`
 - L5 / `--repo` check definitions: `src/scoring.ts` (`CLI_CHECKS`)
 - L5 / `--repo` check implementations: `src/repo-scanner.ts`
+
+---
+
+## Run a free audit on your site
+
+See exactly which of these 55 checks your site passes — in under 10 seconds.
+
+**[Run a free audit →](https://botvisibility.com)**
+
+Or install the CLI:
+
+```bash
+npx botvisibility <your-url>
+```

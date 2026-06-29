@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLevelProgress, getCurrentLevel, LEVELS, CHECK_DEFINITIONS, CLI_CHECKS } from '../src/scoring.js';
+import {
+  calculateLevelProgress,
+  getCurrentLevel,
+  computeScore,
+  levelName,
+  calculateGrade,
+  LEVELS,
+  CHECK_DEFINITIONS,
+  LEVEL5_CHECKS,
+  LEVEL_5_IDS,
+  SCORING_VERSION,
+} from '../src/scoring.js';
 import type { CheckResult, LevelNumber } from '../src/types.js';
 
 function makeCheck(level: LevelNumber, status: 'pass' | 'fail' | 'na', id = 'x'): CheckResult {
@@ -33,16 +44,29 @@ describe('LEVELS metadata', () => {
 });
 
 describe('CHECK_DEFINITIONS coverage', () => {
-  it('matches the published 55-item checklist (48 web + 7 CLI)', () => {
-    expect(CHECK_DEFINITIONS).toHaveLength(48);
-    expect(CLI_CHECKS).toHaveLength(7);
+  it('matches the published 58-check model, all 5 levels external (51 L1-4 + 7 L5)', () => {
+    expect(CHECK_DEFINITIONS).toHaveLength(51);
+    expect(LEVEL5_CHECKS).toHaveLength(7);
+    expect(CHECK_DEFINITIONS.length + LEVEL5_CHECKS.length).toBe(58);
 
     const perLevel = (n: LevelNumber) => CHECK_DEFINITIONS.filter(d => d.level === n).length;
     expect(perLevel(1)).toBe(18);
     expect(perLevel(2)).toBe(11);
     expect(perLevel(3)).toBe(7);
-    expect(perLevel(4)).toBe(12);
-    expect(CLI_CHECKS.every(c => c.level === 5 && c.category === 'Agent-Native')).toBe(true);
+    expect(perLevel(4)).toBe(15);
+    expect(LEVEL5_CHECKS.every(c => c.level === 5 && c.category === 'Agent-Native')).toBe(true);
+  });
+
+  it('LEVEL5_CHECKS ids line up with LEVEL_5_IDS (no orphans)', () => {
+    const ids = new Set(LEVEL5_CHECKS.map(c => c.id));
+    for (const id of Object.values(LEVEL_5_IDS)) {
+      expect(ids.has(id)).toBe(true);
+    }
+    expect(ids.size).toBe(Object.values(LEVEL_5_IDS).length);
+  });
+
+  it('emits scoring version "2" to match the web scan', () => {
+    expect(SCORING_VERSION).toBe('2');
   });
 });
 
@@ -172,14 +196,87 @@ describe('getCurrentLevel', () => {
     expect(getCurrentLevel(progress)).toBe(0);
   });
 
-  it('caps at 4 (L5 Agent-Native is signaled separately via cliChecks)', () => {
+  it('returns 4 when L1-L4 complete but no Level-5 checks pass', () => {
     const checks = [
       ...makeChecks(1, 18, 0),
       ...makeChecks(2, 11, 0),
       ...makeChecks(3, 7, 0),
-      ...makeChecks(4, 12, 0),
+      ...makeChecks(4, 15, 0),
     ];
     const progress = calculateLevelProgress(checks);
     expect(getCurrentLevel(progress)).toBe(4);
+  });
+
+  it('returns 5 when L4 achieved and L5 (Agent-Native) >= 50% — externally', () => {
+    const checks = [
+      ...makeChecks(1, 18, 0),
+      ...makeChecks(2, 11, 0),
+      ...makeChecks(3, 7, 0),
+      ...makeChecks(4, 15, 0),
+      ...makeChecks(5, 4, 3),
+    ];
+    const progress = calculateLevelProgress(checks);
+    expect(getCurrentLevel(progress)).toBe(5);
+  });
+
+  it('stops at 4 when L5 falls below the threshold', () => {
+    const checks = [
+      ...makeChecks(1, 18, 0),
+      ...makeChecks(2, 11, 0),
+      ...makeChecks(3, 7, 0),
+      ...makeChecks(4, 15, 0),
+      ...makeChecks(5, 1, 6),
+    ];
+    const progress = calculateLevelProgress(checks);
+    expect(getCurrentLevel(progress)).toBe(4);
+  });
+});
+
+describe('computeScore', () => {
+  it('summarizes counts, level, levelName, and indexable sub-score', () => {
+    const checks = [
+      ...makeChecks(1, 18, 0),
+      ...makeChecks(2, 11, 0),
+      ...makeChecks(3, 7, 0),
+      ...makeChecks(4, 15, 0),
+      ...makeChecks(5, 7, 0),
+    ];
+    const progress = calculateLevelProgress(checks);
+    const level = getCurrentLevel(progress);
+    const score = computeScore(checks, progress, level);
+    expect(score.total).toBe(58);
+    expect(score.passed).toBe(58);
+    expect(score.failed).toBe(0);
+    expect(score.level).toBe(5);
+    expect(score.levelName).toBe('Agent-Native');
+    expect(score.grade).toBe('perfect');
+    expect(score.indexable).toEqual({ passed: 15, failed: 0, partial: 0, na: 0, total: 15 });
+  });
+
+  it('na checks are excluded from grade applicability', () => {
+    const checks = [
+      ...makeChecks(1, 18, 0),
+      makeCheck(2, 'na', 'n1'),
+    ];
+    const progress = calculateLevelProgress(checks);
+    const score = computeScore(checks, progress, getCurrentLevel(progress));
+    // 18 pass, 0 fail/partial → perfect regardless of the single n/a.
+    expect(score.grade).toBe('perfect');
+    expect(score.na).toBe(1);
+  });
+});
+
+describe('levelName / calculateGrade', () => {
+  it('maps levels to names (0 = Getting Started)', () => {
+    expect(levelName(0)).toBe('Getting Started');
+    expect(levelName(1)).toBe('Discoverable');
+    expect(levelName(5)).toBe('Agent-Native');
+  });
+
+  it('grade is perfect only when nothing failed or partial', () => {
+    expect(calculateGrade(10, 0, 0, 10)).toBe('perfect');
+    expect(calculateGrade(9, 1, 0, 10)).not.toBe('perfect');
+    expect(calculateGrade(1, 9, 0, 10)).toBe('needs-work');
+    expect(calculateGrade(0, 0, 0, 0)).toBe('needs-work');
   });
 });

@@ -2,6 +2,24 @@
 
 All notable changes to the BotVisibility CLI are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-06-28
+
+Level 5 (Agent-Native) is now verified **externally**, like every other level. All **58 checks across all 5 levels** run from a live URL scan — reading a site's published declarations (`/.well-known/agent-card.json` + OpenAPI) and probing the declared endpoints. No `--repo`, source access, or CLI-gating is required for any check, including Level 5. CLI scan output now matches the `botvisibility.com` web scan shape so results are interchangeable.
+
+### Added
+
+- **External Level 5 (`src/deep-checks.ts`)** — the 7 Agent-Native checks (`5.1`–`5.7`) are implemented as a declaration + live-probe contract: a check passes only when the capability is declared in the agent card (or OpenAPI for `5.6`) **and** the declared endpoint responds with an accepted HTTP status. A timeout, network error, or `429` is `n/a` (never a failure); a declared-but-broken endpoint fails.
+- **Level 4 (Indexable) expanded 12 → 15** — `4.13 Structured Data Quality`, `4.14 Entity Coverage`, `4.15 Content Freshness`.
+- **Web-parity scan output** — top-level `scoringVersion` and a `score` summary (`passed`/`failed`/`partial`/`na`/`total`/`level`/`levelName`/`grade` + an `indexable` sub-score), matching `GET https://botvisibility.com/api/scan?...&format=json`.
+- New tests for the external Level-5 probes and the three new Level-4 checks (204 → 236 total).
+
+### Changed (BREAKING)
+
+- **`getCurrentLevel` can now return `5`.** Level 5 is achievable from an external scan, so the numeric `currentLevel` is no longer capped at 4. The weighted cross-level algorithm gains an L5 tier (`l5Achieved = (l4 && r5 >= 0.50) || (r4 >= 0.35 && r5 >= 0.75)`).
+- **`--repo` is now optional and supplementary.** It no longer "unlocks" Level 5 and is not required for any check. Use it to scan a local project directory alongside the live URL (surfacing implementations not yet published). Repo results are reported separately and **do not affect the score**. Their IDs are namespaced `repo-5.x` so they never collide with the canonical external Level-5 checks.
+- **JSON output shape changed for parity.** The `cliChecks` array is removed; output is now `{ scoringVersion, score, url, timestamp, currentLevel, levels, checks }` (plus a supplementary `repoChecks` array only when `--repo` is used).
+- Help text and the README drop all "Level 5 is CLI-only / `--repo` required / requires source" framing — the model is now "58 checks across 5 levels, all run externally."
+
 ## [2.0.1] - 2026-05-30
 
 Maintenance release. No CLI behavior or check changes — `2.0.0` and `2.0.1` scan identically.

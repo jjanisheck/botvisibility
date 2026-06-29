@@ -1,4 +1,5 @@
 import { CheckResult } from './types.js';
+import { runDeepChecks } from './deep-checks.js';
 
 const FETCH_TIMEOUT = 10000;
 
@@ -1843,6 +1844,120 @@ export function checkSubstantiveContent(html: string | null): CheckResult {
   };
 }
 
+// --- JSON-LD node helper (flattens @graph and arrays into object nodes) ---
+
+function collectJsonLdNodes(html: string): Record<string, unknown>[] {
+  const nodes: Record<string, unknown>[] = [];
+  const visit = (node: unknown) => {
+    if (!node) return;
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (typeof node === 'object') {
+      const obj = node as Record<string, unknown>;
+      nodes.push(obj);
+      const graph = obj['@graph'];
+      if (Array.isArray(graph)) graph.forEach(visit);
+    }
+  };
+  extractJsonLdBlocks(html).forEach(visit);
+  return nodes;
+}
+
+// --- Level 4: 4.13 Structured Data Quality ---
+
+export function checkStructuredDataQuality(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.13', name: 'Structured Data Quality', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const nodes = collectJsonLdNodes(html);
+  // Count "meaningful" (non-@-prefixed) properties on each typed node.
+  let best = 0;
+  for (const node of nodes) {
+    if (!node['@type']) continue;
+    const meaningful = Object.keys(node).filter((k) => !k.startsWith('@'));
+    if (meaningful.length > best) best = meaningful.length;
+  }
+  if (best >= 3) {
+    return {
+      id: '4.13', name: 'Structured Data Quality', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: `JSON-LD includes a rich, typed block (${best} meaningful properties)`,
+    };
+  }
+  if (nodes.some((n) => n['@type'])) {
+    return {
+      id: '4.13', name: 'Structured Data Quality', passed: false, status: 'partial', level: 4, category: 'Indexable', autoDetectable: true,
+      message: `Typed JSON-LD found but thin (${best} meaningful propert${best === 1 ? 'y' : 'ies'}; need >=3)`,
+      recommendation: 'Enrich a typed JSON-LD block with name, url, description, logo, sameAs, etc.',
+    };
+  }
+  return {
+    id: '4.13', name: 'Structured Data Quality', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'No typed JSON-LD block with meaningful properties',
+    recommendation: 'Add a JSON-LD block with @type and three or more schema.org properties.',
+  };
+}
+
+// --- Level 4: 4.14 Entity Coverage ---
+
+export function checkEntityCoverage(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.14', name: 'Entity Coverage', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const nodes = collectJsonLdNodes(html);
+  let links = 0;
+  for (const node of nodes) {
+    const sameAs = node['sameAs'];
+    if (typeof sameAs === 'string' && sameAs.trim()) links += 1;
+    else if (Array.isArray(sameAs)) links += sameAs.filter((s) => typeof s === 'string' && s.trim()).length;
+  }
+  if (links > 0) {
+    return {
+      id: '4.14', name: 'Entity Coverage', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: `Entity declares ${links} sameAs link${links === 1 ? '' : 's'} into the knowledge graph`,
+    };
+  }
+  return {
+    id: '4.14', name: 'Entity Coverage', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'No sameAs links in JSON-LD to connect the entity to the knowledge graph',
+    recommendation: 'Add a sameAs array (Wikipedia, Crunchbase, social profiles) to your Organization/WebSite/Person entity.',
+  };
+}
+
+// --- Level 4: 4.15 Content Freshness ---
+
+export function checkContentFreshness(html: string | null): CheckResult {
+  if (!html) {
+    return {
+      id: '4.15', name: 'Content Freshness', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Could not fetch homepage',
+    };
+  }
+  const nodes = collectJsonLdNodes(html);
+  const jsonLdDate = nodes.some((n) => typeof n['dateModified'] === 'string' || typeof n['datePublished'] === 'string');
+  const metaDate =
+    /<meta\s+[^>]*property=["'](?:article:modified_time|og:updated_time)["'][^>]*content=["'][^"']+["']/i.test(html) ||
+    /<meta\s+[^>]*content=["'][^"']+["'][^>]*property=["'](?:article:modified_time|og:updated_time)["']/i.test(html);
+  const timeEl = /<time\b[^>]*\sdatetime=["'][^"']+["']/i.test(html);
+
+  if (jsonLdDate || metaDate || timeEl) {
+    const signal = jsonLdDate ? 'JSON-LD dateModified' : metaDate ? 'article:modified_time/og:updated_time meta' : '<time datetime>';
+    return {
+      id: '4.15', name: 'Content Freshness', passed: true, status: 'pass', level: 4, category: 'Indexable', autoDetectable: true,
+      message: 'Homepage exposes a machine-readable "last updated" signal', details: signal,
+    };
+  }
+  return {
+    id: '4.15', name: 'Content Freshness', passed: false, status: 'fail', level: 4, category: 'Indexable', autoDetectable: true,
+    message: 'No machine-readable freshness signal on the homepage',
+    recommendation: 'Expose dateModified in JSON-LD, an article:modified_time/og:updated_time meta tag, or a <time datetime> element.',
+  };
+}
+
 // --- Run All Checks ---
 
 export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
@@ -1918,7 +2033,14 @@ export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
     Promise.resolve(checkHeadingHierarchy(homepageHtml)),
     Promise.resolve(checkImageAltCoverage(homepageHtml)),
     Promise.resolve(checkSubstantiveContent(homepageHtml)),
+    Promise.resolve(checkStructuredDataQuality(homepageHtml)),
+    Promise.resolve(checkEntityCoverage(homepageHtml)),
+    Promise.resolve(checkContentFreshness(homepageHtml)),
   ]);
 
-  return [...level1, ...level2, ...level3, ...level4];
+  // Level 5: Agent-Native — declaration (agent-card / OpenAPI) + live endpoint probe.
+  // Reuses the already-fetched OpenAPI spec for 5.6 so it isn't fetched twice.
+  const level5 = await runDeepChecks(baseUrl, spec);
+
+  return [...level1, ...level2, ...level3, ...level4, ...level5];
 }

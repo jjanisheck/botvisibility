@@ -34,9 +34,9 @@ node dist/index.js example.com --repo /path/to/some/repo
 
 ## Adding a new check
 
-1. Add the definition to `CHECK_DEFINITIONS` in `src/scoring.ts` (or `CLI_CHECKS` for L4).
-2. Implement the check function in `src/scanner.ts` (or `src/repo-scanner.ts` for L4). Follow the patterns of existing `checkX` functions — return a `CheckResult` with `id`, `name`, `status`, `level`, `message`, and (where useful) `recommendation` and `foundAt`.
-3. Wire the new check into `runAllChecks` in `src/scanner.ts` (or `runRepoChecks` in `src/repo-scanner.ts`).
+1. Add the definition to `CHECK_DEFINITIONS` in `src/scoring.ts` (or `LEVEL5_CHECKS` for a Level-5 Agent-Native check).
+2. Implement the check function in `src/scanner.ts` (Levels 1–4) or `src/deep-checks.ts` (Level 5: declaration + live probe). Follow the patterns of existing `checkX` functions — return a `CheckResult` with `id`, `name`, `status`, `level`, `message`, and (where useful) `recommendation` and `foundAt`.
+3. Wire the new check into `runAllChecks` in `src/scanner.ts` (Level 5 checks are wired via `runDeepChecks`). The optional `--repo` supplementary checks live in `src/repo-scanner.ts` / `runRepoChecks`.
 4. Add a test in `tests/scanner.test.ts` or `tests/repo-scanner.test.ts`.
 5. Add the check to `docs/checks.md`.
 6. Run `npm test` and `npm run build`.

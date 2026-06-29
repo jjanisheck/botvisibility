@@ -1,8 +1,8 @@
 # Checks reference
 
-BotVisibility runs **55 checks** across 5 levels. This page describes each check, why it matters for AI agent token efficiency, and how to fix failures.
+BotVisibility runs **58 checks** across 5 levels — **all run externally** against a live URL (no source access required for any level, including Level 5). This page describes each check, why it matters for AI agent token efficiency, and how to fix failures.
 
-The canonical implementation lives in `src/scanner.ts` (web-based checks) and `src/repo-scanner.ts` (`--repo` code-based checks). Check IDs and definitions are listed in `src/scoring.ts`.
+The canonical implementation lives in `src/scanner.ts` (Levels 1–4) and `src/deep-checks.ts` (Level 5: declaration + live probe). Check IDs and definitions are listed in `src/scoring.ts`. The optional `--repo <path>` flag adds supplementary local-source analysis via `src/repo-scanner.ts`; it is not required for any check and does not affect the score.
 
 ---
 
@@ -312,7 +312,7 @@ Agents work efficiently. Pagination, filtering, caching, and tool quality reduce
 
 ---
 
-## Level 4 — Indexable (12 checks)
+## Level 4 — Indexable (15 checks)
 
 AI search systems can find, crawl, index, and ground answers in your site. Most of these checks reuse the homepage HTML the scanner already fetched, so they add no extra round-trips.
 
@@ -412,73 +412,103 @@ AI search systems can find, crawl, index, and ground answers in your site. Most 
 
 **How to fix:** Add a real description of what your product does, who it's for, and what makes it different — at least 300 words on the homepage.
 
+### 4.13 Structured Data Quality
+
+**What it checks:** At least one JSON-LD block is rich — it has an `@type` and three or more meaningful schema.org properties (`name`, `url`, `description`, `logo`, `sameAs`, etc.).
+
+**Why it matters:** A bare `@type` tells search systems nothing. Rich, typed entities are what produce knowledge-panel and rich-result eligibility.
+
+**How to fix:** Flesh out your primary JSON-LD entity with several real properties, not just `@type` and `name`.
+
+### 4.14 Entity Coverage
+
+**What it checks:** A JSON-LD entity declares `sameAs` links that connect it to the knowledge graph (Wikipedia, Crunchbase, social profiles).
+
+**Why it matters:** `sameAs` links are how search systems reconcile your site with a knowledge-graph entity and attribute answers to you.
+
+**How to fix:** Add a `sameAs` array of authoritative profile URLs to your `Organization`/`WebSite`/`Person` entity.
+
+### 4.15 Content Freshness
+
+**What it checks:** The homepage exposes a machine-readable "last updated" signal — JSON-LD `dateModified`, an `article:modified_time`/`og:updated_time` meta tag, or a `<time datetime>` element.
+
+**Why it matters:** Freshness signals help AI search systems decide whether your content is current enough to ground an answer in.
+
+**How to fix:** Emit `dateModified` in JSON-LD, an `article:modified_time` meta tag, or a `<time datetime>` element reflecting the last update.
+
 ---
 
-## Level 5 — Agent-Native (7 checks, `--repo` required)
+## Level 5 — Agent-Native (7 checks)
 
-First-class agent support. These checks scan your local source code and require the `--repo <path>` flag.
+First-class agent support — verified **externally**, like every other level. Each check passes only when **both** are true:
+
+1. **Declared** — the capability is declared in `/.well-known/agent-card.json` (the `capabilities` object), or in your OpenAPI spec for `5.6`.
+2. **Probed** — the declared endpoint responds to a live `GET` with an accepted HTTP status.
+
+A timeout, network error, or `429` is reported as `n/a` (never a failure); a capability declared but whose endpoint is broken (e.g. 404) **fails**.
 
 ### 5.1 Intent-Based Endpoints
 
-**What it checks:** High-level action endpoints (e.g., `/send-invoice`, `/cancel-subscription`) in your route definitions, alongside CRUD primitives.
+**What it checks:** `capabilities.intentEndpoints[0]` is declared and the first endpoint responds to `GET` with status ∈ `{200, 401, 405, 415}`.
 
 **Why it matters:** CRUD endpoints force agents to compose 5-10 calls for a single user intent. Intent endpoints encode the business action directly.
 
-**How to fix:** Add intent-shaped routes for your most common multi-step workflows.
+**How to fix:** Declare `capabilities.intentEndpoints` (list your best one first) and back it with a reachable route.
 
 ### 5.2 Agent Sessions
 
-**What it checks:** Persistent session management for multi-step agent interactions in your code (session stores, context tracking).
+**What it checks:** `capabilities.sessions.endpoint` is declared and responds to `GET` with status ∈ `{200, 401}`.
 
 **Why it matters:** Stateless APIs make agents re-send the entire context on every call. Sessions cap the per-call token cost.
 
-**How to fix:** Implement a session abstraction (Redis-backed or similar) that agents can attach to.
+**How to fix:** Declare `capabilities.sessions.endpoint` and serve a session route.
 
 ### 5.3 Scoped Agent Tokens
 
-**What it checks:** Agent-specific token issuance with capability limits in your auth configuration.
+**What it checks:** `capabilities.scopedTokens.{tokenEndpoint, scopes}` (scopes non-empty) is declared and `tokenEndpoint` responds with status ∈ `{200, 401, 405}`. **Fallback:** if not declared, `GET /.well-known/oauth-authorization-server` returns `200` with a non-empty `scopes_supported` array.
 
 **Why it matters:** General-purpose API keys are blunt instruments. Agent-scoped tokens with explicit capabilities let users delegate narrowly.
 
-**How to fix:** Implement a token-issuance flow where users can mint tokens with specific scopes for specific agents.
+**How to fix:** Declare `capabilities.scopedTokens`, or publish OAuth authorization-server metadata with `scopes_supported`.
 
 ### 5.4 Agent Audit Logs
 
-**What it checks:** API actions logged with agent identifiers (e.g., `agent_id`, `actor_type: "agent"`) in your logging code.
+**What it checks:** `capabilities.auditLog.header` is declared and that correlation header is present (case-insensitive) on the **site root** (`/`) response.
 
 **Why it matters:** Without agent attribution in logs, debugging agent behavior and detecting misuse is nearly impossible.
 
-**How to fix:** Tag every authenticated request with the calling agent's identity in your audit log.
+**How to fix:** Emit the correlation header (e.g. `X-Request-Id`) **site-wide** via server middleware — not only on one API route — and declare `capabilities.auditLog.header`.
 
 ### 5.5 Sandbox Environment
 
-**What it checks:** A separate test/sandbox environment for safe agent experimentation, declared in your config or docs.
+**What it checks:** `capabilities.sandbox.baseUrl` (a fully-qualified URL) is declared and responds to `GET` with status ∈ `{200, 401}`.
 
 **Why it matters:** Agents can't safely learn on production. A sandbox lets developers iterate without risk.
 
-**How to fix:** Provision a sandbox environment with test credentials and document it.
+**How to fix:** Declare `capabilities.sandbox.baseUrl` and serve a sandbox (a static example response is enough).
 
 ### 5.6 Consequence Labels
 
-**What it checks:** Annotations marking irreversible or destructive actions in your route handlers, OpenAPI spec, or schema files.
+**What it checks:** At least one operation in your published OpenAPI spec carries `x-consequence`, `x-irreversible`, or `x-side-effects`. (No published OpenAPI → `n/a`, inconclusive.)
 
 **Why it matters:** Agents need to know which actions can't be undone before they commit. Consequence labels feed agent guardrails.
 
-**How to fix:** Annotate destructive endpoints (e.g., `x-consequence: irreversible`) and/or label them in your docs.
+**How to fix:** Annotate consequential or irreversible operations in your OpenAPI spec (e.g. `x-consequence: irreversible`).
 
 ### 5.7 Native Tool Schemas
 
-**What it checks:** Ready-to-use tool definitions for agent frameworks (OpenAI tools, Anthropic tool-use, MCP tool schemas) in your repo.
+**What it checks:** `capabilities.toolSchemas` (defaults to `/.well-known/skills/index.json` if absent) responds to `GET` with status `200` **and** a body that parses as JSON.
 
 **Why it matters:** When you ship pre-built tool schemas, framework users can drop them in directly instead of hand-translating your OpenAPI spec.
 
-**How to fix:** Publish a `tools.json` or `mcp.json` in your repo with tool definitions matching the major agent frameworks.
+**How to fix:** Publish `/.well-known/skills/index.json` (valid JSON) or declare `capabilities.toolSchemas` pointing to your tool definitions.
 
 ---
 
 ## Source
 
-- Web check definitions: `src/scoring.ts` (`CHECK_DEFINITIONS`)
-- Web check implementations: `src/scanner.ts`
-- L5 / `--repo` check definitions: `src/scoring.ts` (`CLI_CHECKS`)
-- L5 / `--repo` check implementations: `src/repo-scanner.ts`
+- Level 1–4 check definitions: `src/scoring.ts` (`CHECK_DEFINITIONS`)
+- Level 1–4 check implementations: `src/scanner.ts`
+- Level 5 check definitions: `src/scoring.ts` (`LEVEL5_CHECKS`)
+- Level 5 check implementations: `src/deep-checks.ts` (external declaration + live probe)
+- Supplementary `--repo` local-source analysis: `src/repo-scanner.ts`

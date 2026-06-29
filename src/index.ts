@@ -2,8 +2,8 @@
 
 import { normalizeUrl, runAllChecks } from './scanner.js';
 import { runRepoChecks } from './repo-scanner.js';
-import { calculateLevelProgress, getCurrentLevel, LEVELS, CLI_CHECKS } from './scoring.js';
-import { CheckResult, ScanResult, RepoCheckResult, LevelProgress } from './types.js';
+import { calculateLevelProgress, getCurrentLevel, computeScore, LEVELS, SCORING_VERSION } from './scoring.js';
+import { CheckResult, ScanResult, RepoCheckResult } from './types.js';
 import { parseArgs } from './args.js';
 import * as path from 'path';
 import * as readline from 'readline';
@@ -41,30 +41,33 @@ The Speedtest.net for AI agents. Scan any URL to check bot visibility.
 ${colors.bold}USAGE${colors.reset}
   npx botvisibility <url> [options]
 
+  Runs all 58 checks across 5 levels, all externally — no source access needed.
+
 ${colors.bold}OPTIONS${colors.reset}
   --json        Output results as JSON (for CI/CD integration)
-  --repo <path> Include local repo analysis for deeper checks (unlocks Level 5)
+  --repo <path> Also scan a local project directory alongside the live URL
+                (supplementary; surfaces implementations not yet published)
   --help, -h    Show this help message
 
 ${colors.bold}EXAMPLES${colors.reset}
-  ${colors.dim}# Basic URL scan${colors.reset}
+  ${colors.dim}# Basic URL scan (all 58 checks, all 5 levels)${colors.reset}
   npx botvisibility https://example.com
 
   ${colors.dim}# JSON output for CI/CD${colors.reset}
   npx botvisibility stripe.com --json
 
-  ${colors.dim}# Full scan with repo analysis (unlocks Level 5)${colors.reset}
+  ${colors.dim}# Also scan a local project directory${colors.reset}
   npx botvisibility https://myapp.com --repo ./
 
   ${colors.dim}# Combined scan with JSON output${colors.reset}
   npx botvisibility clone.fyi --repo ../my-backend --json
 
-${colors.bold}LEVELS${colors.reset}
+${colors.bold}LEVELS${colors.reset} ${colors.dim}(58 checks, all run externally)${colors.reset}
   ${colors.red}Level 1: Discoverable${colors.reset}   Bots can find you via machine-readable metadata (18 checks)
   ${colors.yellow}Level 2: Usable${colors.reset}        Your API works for agents (11 checks, most require OpenAPI)
   ${colors.green}Level 3: Optimized${colors.reset}     Your API minimizes token cost and handles scale (7 checks)
-  ${colors.magenta}Level 4: Indexable${colors.reset}     AI search systems can find, index, and ground answers (12 checks)
-  ${colors.blue}Level 5: Agent-Native${colors.reset}  Your platform treats AI agents as first-class users (7 checks, --repo required)
+  ${colors.magenta}Level 4: Indexable${colors.reset}     AI search systems can find, index, and ground answers (15 checks)
+  ${colors.blue}Level 5: Agent-Native${colors.reset}  Your platform treats AI agents as first-class users (7 checks)
 
 ${colors.bold}LEARN MORE${colors.reset}
   https://botvisibility.com
@@ -85,21 +88,11 @@ function printLevelSection(
   levelNumber: number,
   levelName: string,
   checks: (CheckResult | RepoCheckResult)[],
-  hasRepo: boolean,
 ) {
   const levelColor = getLevelColor(levelNumber);
   const applicable = checks.filter(c => c.status !== 'na');
   const passed = checks.filter(c => c.status === 'pass').length;
   const naCount = checks.filter(c => c.status === 'na').length;
-
-  // Level 5 header when no --repo (Agent-Native checks require local repo)
-  if (levelNumber === 5 && !hasRepo) {
-    console.log('');
-    console.log(`${levelColor}${colors.bold}LEVEL ${levelNumber}: ${levelName.toUpperCase()}${colors.reset} ${colors.dim}(--repo required)${colors.reset}`);
-    console.log(`${colors.dim}${'─'.repeat(55)}${colors.reset}`);
-    console.log(`  ${colors.dim}Run with --repo <path> to unlock Level 5 checks${colors.reset}`);
-    return;
-  }
 
   console.log('');
   console.log(`${levelColor}${colors.bold}LEVEL ${levelNumber}: ${levelName.toUpperCase()}${colors.reset}${' '.repeat(Math.max(0, 40 - levelName.length - 10))}${colors.bold}${passed}/${applicable.length}${colors.reset}`);
@@ -132,12 +125,14 @@ function printLevelSection(
 }
 
 function printResults(result: ScanResult, repoChecks?: RepoCheckResult[]) {
-  const allChecks: CheckResult[] = [...result.checks, ...(repoChecks || [])];
-  const levelProgress = calculateLevelProgress(allChecks);
-  const currentLevel = getCurrentLevel(levelProgress);
+  // Scoring is computed from the canonical 58 external checks only.
+  // Repo checks (if any) are supplementary and shown separately below.
+  const checks = result.checks;
+  const levelProgress = result.levels;
+  const currentLevel = result.currentLevel;
 
-  const totalPassed = allChecks.filter(c => c.status === 'pass').length;
-  const totalApplicable = allChecks.filter(c => c.status !== 'na').length;
+  const totalPassed = checks.filter(c => c.status === 'pass').length;
+  const totalApplicable = checks.filter(c => c.status !== 'na').length;
 
   // Find the "current working level" — first incomplete
   const workingLevel = levelProgress.find(lp => !lp.complete) || levelProgress[levelProgress.length - 1];
@@ -161,36 +156,46 @@ function printResults(result: ScanResult, repoChecks?: RepoCheckResult[]) {
 
   if (currentLevel === 0) {
     console.log(`  ${colors.dim}Start by making your site discoverable to AI agents.${colors.reset}`);
-  } else if (currentLevel < 4) {
+  } else if (currentLevel < 5) {
     const nextLevel = LEVELS[currentLevel]; // 0-indexed: currentLevel is the next one
-    console.log(`  ${colors.dim}Level ${currentLevel} complete! Work on Level ${nextLevel.number}: ${nextLevel.name}.${colors.reset}`);
-  } else if (currentLevel === 4) {
-    console.log(`  ${colors.dim}Level 4 complete! Run with --repo to evaluate Level 5: Agent-Native.${colors.reset}`);
+    console.log(`  ${colors.dim}Level ${currentLevel} reached! Work on Level ${nextLevel.number}: ${nextLevel.name}.${colors.reset}`);
   } else {
-    console.log(`  ${colors.green}All levels complete! Maximum agent visibility achieved.${colors.reset}`);
+    console.log(`  ${colors.green}All 5 levels reached! Maximum agent visibility achieved.${colors.reset}`);
   }
 
-  // Group checks by level
-  const hasRepo = !!repoChecks && repoChecks.length > 0;
-
+  // Group checks by level (all 5 levels run externally)
   for (const level of LEVELS) {
-    const levelChecks = allChecks.filter(c => c.level === level.number);
-
-    if (level.number === 5 && !hasRepo) {
-      printLevelSection(level.number, level.name, [], false);
-    } else if (levelChecks.length > 0) {
-      printLevelSection(level.number, level.name, levelChecks, hasRepo);
+    const levelChecks = checks.filter(c => c.level === level.number);
+    if (levelChecks.length > 0) {
+      printLevelSection(level.number, level.name, levelChecks);
     }
   }
 
   // Summary
   console.log('');
   console.log(`${colors.bold}${'='.repeat(55)}${colors.reset}`);
-  const totalPartial = allChecks.filter(c => c.status === 'partial').length;
-  const totalFailed = allChecks.filter(c => c.status === 'fail').length;
-  const totalNa = allChecks.filter(c => c.status === 'na').length;
+  const totalPartial = checks.filter(c => c.status === 'partial').length;
+  const totalFailed = checks.filter(c => c.status === 'fail').length;
+  const totalNa = checks.filter(c => c.status === 'na').length;
 
   console.log(`  ${colors.green}+ ${totalPassed} passed${colors.reset}  ${colors.yellow}~ ${totalPartial} partial${colors.reset}  ${colors.red}x ${totalFailed} failed${colors.reset}  ${colors.dim}- ${totalNa} n/a${colors.reset}`);
+
+  // Supplementary local repo analysis (does not affect the score above)
+  if (repoChecks && repoChecks.length > 0) {
+    console.log('');
+    console.log(`${colors.bold}LOCAL REPO ANALYSIS${colors.reset} ${colors.dim}(supplementary — not scored)${colors.reset}`);
+    console.log(`${colors.dim}${'─'.repeat(55)}${colors.reset}`);
+    for (const check of repoChecks) {
+      if (check.status === 'na') continue;
+      const icon = statusIcon(check.status);
+      console.log(`  ${icon} ${colors.bold}${check.name}${colors.reset} ${colors.dim}(${check.id})${colors.reset}`);
+      console.log(`    ${colors.dim}${check.message}${colors.reset}`);
+      if (check.filePath) {
+        console.log(`    ${colors.dim}File: ${check.filePath}${colors.reset}`);
+      }
+    }
+  }
+
   console.log('');
   console.log(`  ${colors.dim}Full checklist: https://botvisibility.com${colors.reset}`);
   console.log('');
@@ -355,26 +360,28 @@ async function main() {
     repoChecks = runRepoChecks(absolutePath);
   }
 
-  // Calculate level progress
-  const allChecks = [...checks, ...(repoChecks || [])];
-  const levelProgress = calculateLevelProgress(allChecks);
+  // Calculate level progress + score from the canonical 58 external checks only.
+  // Repo checks are supplementary and never affect the score.
+  const levelProgress = calculateLevelProgress(checks);
   const currentLevel = getCurrentLevel(levelProgress);
+  const score = computeScore(checks, levelProgress, currentLevel);
 
   const result: ScanResult = {
+    scoringVersion: SCORING_VERSION,
+    score,
     url: baseUrl,
     timestamp: new Date().toISOString(),
     currentLevel,
     levels: levelProgress,
     checks,
-    cliChecks: CLI_CHECKS,
   };
 
   // Output
   if (jsonOutput) {
-    const output = {
-      ...result,
-      repoChecks: repoChecks || []
-    };
+    // Matches the web scan JSON shape; repoChecks (if any) appended as supplementary.
+    const output = repoChecks && repoChecks.length > 0
+      ? { ...result, repoChecks }
+      : result;
     console.log(JSON.stringify(output, null, 2));
   } else {
     printResults(result, repoChecks);

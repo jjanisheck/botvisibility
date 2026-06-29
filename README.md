@@ -13,7 +13,7 @@ npx botvisibility stripe.com
 
 ## Why this exists
 
-When AI agents browse a site that doesn't publish machine-readable metadata or APIs, they fall back to scraping HTML, guessing endpoints, and retrying. That burns 5-100x more tokens per session and silently inflates the cost of every agent interaction. BotVisibility runs 55 automated checks across 5 levels and tells you exactly what's missing and how to fix it.
+When AI agents browse a site that doesn't publish machine-readable metadata or APIs, they fall back to scraping HTML, guessing endpoints, and retrying. That burns 5-100x more tokens per session and silently inflates the cost of every agent interaction. BotVisibility runs 58 automated checks across 5 levels — all run externally against a live URL — and tells you exactly what's missing and how to fix it.
 
 ## Install & run
 
@@ -39,7 +39,7 @@ npx botvisibility https://example.com
 # JSON output for CI/CD
 npx botvisibility stripe.com --json
 
-# Full scan with local repo analysis (unlocks Level 5)
+# Also scan a local project directory alongside the live URL (supplementary)
 npx botvisibility https://myapp.com --repo ./
 
 # Combined scan with JSON output
@@ -48,17 +48,19 @@ npx botvisibility mysite.com --repo ../my-backend --json
 
 ## What it checks
 
-Five levels, 55 total checks. The full reference lives in [`docs/checks.md`](https://github.com/jjanisheck/botvisibility/blob/main/docs/checks.md). Quick overview:
+Five levels, 58 total checks — **all run externally** against a live URL (no source access required for any level, including Level 5). The full reference lives in [`docs/checks.md`](https://github.com/jjanisheck/botvisibility/blob/main/docs/checks.md). Quick overview:
 
 - **Level 1 — Discoverable (18 checks):** llms.txt, agent-card, OpenAPI spec, robots.txt AI policy, MCP server, ai.json, skill files, RSS, page token efficiency, content signals, API catalog (RFC 9727), markdown-for-agents, WebMCP, and more.
 - **Level 2 — Usable (11 checks):** API read/write/primary actions, API key auth, scoped keys, OIDC, structured errors, async ops, idempotency, OAuth protected-resource (RFC 9728), x402 payments.
 - **Level 3 — Optimized (7 checks):** sparse fields, cursor pagination, filtering, bulk ops, rate limit headers, caching headers, MCP tool quality.
-- **Level 4 — Indexable (12 checks):** Googlebot allowed, Google-Extended policy, homepage indexable, sitemap, HTTPS, viewport, JSON-LD, entity schema, canonical URL, heading hierarchy, image alt coverage, substantive content.
-- **Level 5 — Agent-Native (7 checks, `--repo` required):** intent endpoints, agent sessions, scoped agent tokens, audit logs, sandbox env, consequence labels, native tool schemas.
+- **Level 4 — Indexable (15 checks):** Googlebot allowed, Google-Extended policy, homepage indexable, sitemap, HTTPS, viewport, JSON-LD, entity schema, canonical URL, heading hierarchy, image alt coverage, substantive content, structured data quality, entity coverage, content freshness.
+- **Level 5 — Agent-Native (7 checks):** intent endpoints, agent sessions, scoped agent tokens, audit logs, sandbox env, consequence labels, native tool schemas. Each passes only when the capability is **declared** (in `/.well-known/agent-card.json`, or OpenAPI for consequence labels) **and** the declared endpoint **responds** to a live probe.
+
+`--repo <path>` is optional and supplementary: it scans a local project directory alongside the live URL to surface implementations that may not be published yet. It is **not** required for any check (including Level 5) and does not affect the score.
 
 ## Scoring
 
-BotVisibility uses a weighted cross-level algorithm so investing in higher-level capabilities still moves your score even if some low-level items are missing. Full algorithm and worked examples in [`docs/scoring.md`](https://github.com/jjanisheck/botvisibility/blob/main/docs/scoring.md).
+BotVisibility uses a weighted cross-level algorithm so investing in higher-level capabilities still moves your score even if some low-level items are missing. Scan output matches the `botvisibility.com` web scan (`scoringVersion`, `score`, `currentLevel`, `levels`, `checks`) so CLI and web results are interchangeable. Full algorithm and worked examples in [`docs/scoring.md`](https://github.com/jjanisheck/botvisibility/blob/main/docs/scoring.md).
 
 ## CI/CD integration
 
@@ -82,7 +84,7 @@ Every unoptimized interaction costs AI agents extra tokens. At Claude Sonnet 4.6
 
 ## Changelog
 
-Release notes for every version live in [`CHANGELOG.md`](https://github.com/jjanisheck/botvisibility/blob/main/CHANGELOG.md). Latest: **2.0.1** — maintenance release (CLI-only repo cleanup, CI fix); scans identically to **2.0.0**, which expanded to 55 checks across 5 levels (Level 4 Indexable is new; Agent-Native IDs shifted from `4.x` to `5.x` — breaking).
+Release notes for every version live in [`CHANGELOG.md`](https://github.com/jjanisheck/botvisibility/blob/main/CHANGELOG.md). Latest: **3.0.0** — Level 5 (Agent-Native) is now verified **externally** (declaration + live probe), so all **58 checks across all 5 levels** run from a live URL scan with no `--repo`/source access. `getCurrentLevel` can now reach 5, Level 4 grew to 15 checks, scan output matches the web scan shape, and `--repo` is now optional/supplementary (breaking: `cliChecks` removed, `--repo` no longer required for Level 5).
 
 ## Contributing
 

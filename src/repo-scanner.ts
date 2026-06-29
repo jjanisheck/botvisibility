@@ -191,20 +191,20 @@ export function checkIntentEndpoints(repoPath: string): RepoCheckResult {
   if (allMatches.length >= 2) {
     const uniqueFiles = [...new Set(allMatches.map(m => m.file))];
     return {
-      id: '5.1', name: 'Intent-Based Endpoints', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
+      id: 'repo-5.1', name: 'Intent-Based Endpoints', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
       message: `Found intent-based endpoints in ${uniqueFiles.length} file(s)`,
       details: allMatches.slice(0, 3).map(m => `${path.relative(repoPath, m.file)}:${m.line}`).join(', ')
     };
   } else if (allMatches.length === 1) {
     return {
-      id: '5.1', name: 'Intent-Based Endpoints', passed: false, status: 'partial', level: 5, category: 'Agent-Native', autoDetectable: true,
+      id: 'repo-5.1', name: 'Intent-Based Endpoints', passed: false, status: 'partial', level: 5, category: 'Agent-Native', autoDetectable: true,
       message: 'Found some intent-based patterns',
       recommendation: 'Add more high-level intent endpoints (e.g., /send-invoice, /process-payment) alongside CRUD'
     };
   }
 
   return {
-    id: '5.1', name: 'Intent-Based Endpoints', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
+    id: 'repo-5.1', name: 'Intent-Based Endpoints', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
     message: 'No intent-based endpoints found',
     recommendation: 'Add high-level intent endpoints (e.g., /send-invoice, /process-payment) alongside CRUD'
   };
@@ -231,14 +231,14 @@ export function checkAgentSessions(repoPath: string): RepoCheckResult {
   if (allMatches.length > 0) {
     const uniqueFiles = [...new Set(allMatches.map(m => m.file))];
     return {
-      id: '5.2', name: 'Agent Sessions', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
+      id: 'repo-5.2', name: 'Agent Sessions', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
       message: `Found agent session patterns in ${uniqueFiles.length} file(s)`,
       details: allMatches.slice(0, 3).map(m => `${path.relative(repoPath, m.file)}:${m.line}`).join(', ')
     };
   }
 
   return {
-    id: '5.2', name: 'Agent Sessions', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
+    id: 'repo-5.2', name: 'Agent Sessions', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
     message: 'No agent session management found',
     recommendation: 'Implement persistent sessions with context for multi-step agent interactions'
   };
@@ -265,14 +265,14 @@ export function checkScopedAgentTokens(repoPath: string): RepoCheckResult {
   if (allMatches.length > 0) {
     const uniqueFiles = [...new Set(allMatches.map(m => m.file))];
     return {
-      id: '5.3', name: 'Scoped Agent Tokens', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
+      id: 'repo-5.3', name: 'Scoped Agent Tokens', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
       message: `Found agent token patterns in ${uniqueFiles.length} file(s)`,
       details: allMatches.slice(0, 3).map(m => `${path.relative(repoPath, m.file)}:${m.line}`).join(', ')
     };
   }
 
   return {
-    id: '5.3', name: 'Scoped Agent Tokens', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
+    id: 'repo-5.3', name: 'Scoped Agent Tokens', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
     message: 'No agent-specific token/scope patterns found',
     recommendation: 'Create agent-specific tokens with capability limits (read-only, write, admin)'
   };
@@ -297,14 +297,14 @@ export function checkAgentAuditLogs(repoPath: string): RepoCheckResult {
   if (allMatches.length > 0) {
     const uniqueFiles = [...new Set(allMatches.map(m => m.file))];
     return {
-      id: '5.4', name: 'Agent Audit Logs', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
+      id: 'repo-5.4', name: 'Agent Audit Logs', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
       message: `Found agent audit logging in ${uniqueFiles.length} file(s)`,
       details: allMatches.slice(0, 3).map(m => `${path.relative(repoPath, m.file)}:${m.line}`).join(', ')
     };
   }
 
   return {
-    id: '5.4', name: 'Agent Audit Logs', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
+    id: 'repo-5.4', name: 'Agent Audit Logs', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
     message: 'No agent audit logging found',
     recommendation: 'Log API actions with agent identifiers for traceability'
   };
@@ -331,7 +331,7 @@ export function checkSandboxEnvironment(repoPath: string): RepoCheckResult {
 
   if (total > 0) {
     return {
-      id: '5.5', name: 'Sandbox Environment', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
+      id: 'repo-5.5', name: 'Sandbox Environment', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
       message: `Found sandbox/test environment patterns in ${total} location(s)`,
       details: allMatches.length > 0
         ? allMatches.slice(0, 2).map(m => `${path.relative(repoPath, m.file)}:${m.line}`).join(', ')
@@ -340,7 +340,7 @@ export function checkSandboxEnvironment(repoPath: string): RepoCheckResult {
   }
 
   return {
-    id: '5.5', name: 'Sandbox Environment', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
+    id: 'repo-5.5', name: 'Sandbox Environment', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
     message: 'No sandbox environment found',
     recommendation: 'Provide a sandbox environment for agents to test operations safely'
   };
@@ -366,14 +366,14 @@ export function checkConsequenceLabels(repoPath: string): RepoCheckResult {
   if (allMatches.length > 0) {
     const uniqueFiles = [...new Set(allMatches.map(m => m.file))];
     return {
-      id: '5.6', name: 'Consequence Labels', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
+      id: 'repo-5.6', name: 'Consequence Labels', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
       message: `Found consequence annotations in ${uniqueFiles.length} file(s)`,
       details: allMatches.slice(0, 3).map(m => `${path.relative(repoPath, m.file)}:${m.line}`).join(', ')
     };
   }
 
   return {
-    id: '5.6', name: 'Consequence Labels', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
+    id: 'repo-5.6', name: 'Consequence Labels', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
     message: 'No consequence labels found',
     recommendation: 'Mark consequential/irreversible actions in your API docs or schema annotations'
   };
@@ -403,14 +403,14 @@ export function checkNativeToolSchemas(repoPath: string): RepoCheckResult {
 
   if (toolFiles.length > 0) {
     return {
-      id: '5.7', name: 'Native Tool Schemas', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
+      id: 'repo-5.7', name: 'Native Tool Schemas', passed: true, status: 'pass', level: 5, category: 'Agent-Native', autoDetectable: true,
       message: `Found tool definition files`,
       filePath: toolFiles[0],
       details: toolFiles.map(f => path.relative(repoPath, f)).join(', ')
     };
   } else if (allMatches.length > 0) {
     return {
-      id: '5.7', name: 'Native Tool Schemas', passed: false, status: 'partial', level: 5, category: 'Agent-Native', autoDetectable: true,
+      id: 'repo-5.7', name: 'Native Tool Schemas', passed: false, status: 'partial', level: 5, category: 'Agent-Native', autoDetectable: true,
       message: `Found tool schema references in ${allMatches.length} location(s)`,
       details: allMatches.slice(0, 2).map(m => `${path.relative(repoPath, m.file)}:${m.line}`).join(', '),
       recommendation: 'Extract tool definitions into standalone .tool.json or MCP config files'
@@ -418,7 +418,7 @@ export function checkNativeToolSchemas(repoPath: string): RepoCheckResult {
   }
 
   return {
-    id: '5.7', name: 'Native Tool Schemas', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
+    id: 'repo-5.7', name: 'Native Tool Schemas', passed: false, status: 'fail', level: 5, category: 'Agent-Native', autoDetectable: true,
     message: 'No tool definition files found',
     recommendation: 'Create ready-to-use tool definition files (.tool.json, MCP configs) for agent frameworks'
   };
@@ -706,7 +706,8 @@ export function runRepoChecks(repoPath: string): RepoCheckResult[] {
     checkCachingHeadersCode(repoPath),
     checkMcpToolQualityCode(repoPath),
     checkStreamingEndpoints(repoPath),
-    // Level 5: Agent-Native checks
+    // Agent-Native code signals (supplementary to the external Level-5 scan —
+    // surfaces local implementations that may not be published/declared yet).
     checkIntentEndpoints(repoPath),
     checkAgentSessions(repoPath),
     checkScopedAgentTokens(repoPath),

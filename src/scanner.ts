@@ -3,6 +3,29 @@ import { runDeepChecks } from './deep-checks.js';
 
 const FETCH_TIMEOUT = 10000;
 
+// Max check functions (each may issue one or more HTTP requests) in flight at once
+// during a scan. Caps load on the target host so overlapping the levels doesn't
+// flood it or skew the rate-limit check / trigger 429s.
+const CHECK_CONCURRENCY = 8;
+
+// Run order-independent async tasks with a bounded number in flight, preserving
+// input→output order. Mirrors Promise.all semantics (rejects if any task rejects),
+// but never lets more than `limit` run concurrently.
+export async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results = new Array<T>(tasks.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= tasks.length) return;
+      results[i] = await tasks[i]();
+    }
+  }
+  const workerCount = Math.max(0, Math.min(limit, tasks.length));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
 // --- OpenAPI Spec Mining Types ---
 
 export interface ParsedOpenApiSpec {
@@ -1998,77 +2021,89 @@ export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
   const homepageHtml = homepage.html;
   const xRobotsTag = homepage.xRobotsTag;
 
-  // Level 1 checks (17 — token efficiency added after so it can apply mitigations)
-  const level1Base = await Promise.all([
-    checkLlmsTxt(baseUrl),
-    checkAgentCard(baseUrl),
-    Promise.resolve(checkOpenApiSpecFromParsed(spec)),
-    checkRobotsTxt(baseUrl),
-    Promise.resolve(checkStructuredData(homepageHtml)),
-    checkCorsHeaders(baseUrl),
-    Promise.resolve(checkAiMetaTags(homepageHtml)),
-    checkSkillFile(baseUrl),
-    checkAiSiteProfile(baseUrl),
-    checkSkillsIndex(baseUrl),
-    Promise.resolve(checkLinkHeaders(homepageHtml)),
-    checkMcpServer(baseUrl),
-    checkRssFeed(homepageHtml, baseUrl),
-    Promise.resolve(checkContentSignals(robotsTxt)),
-    checkApiCatalog(baseUrl),
-    checkMarkdownForAgents(baseUrl),
-    Promise.resolve(checkWebMcp(homepageHtml)),
+  // All Level 1-4 checks are independent, so they run together in one bounded pool
+  // (CHECK_CONCURRENCY) rather than a Promise.all per level awaited in series — the
+  // levels now overlap, cutting wall-time from "sum of each level's slowest check"
+  // toward "the single slowest check". Thunks preserve each slot's order; pure
+  // checks are wrapped so they flow through the same pool.
+  const level1BaseTasks: Array<() => Promise<CheckResult>> = [
+    () => checkLlmsTxt(baseUrl),
+    () => checkAgentCard(baseUrl),
+    () => Promise.resolve(checkOpenApiSpecFromParsed(spec)),
+    () => checkRobotsTxt(baseUrl),
+    () => Promise.resolve(checkStructuredData(homepageHtml)),
+    () => checkCorsHeaders(baseUrl),
+    () => Promise.resolve(checkAiMetaTags(homepageHtml)),
+    () => checkSkillFile(baseUrl),
+    () => checkAiSiteProfile(baseUrl),
+    () => checkSkillsIndex(baseUrl),
+    () => Promise.resolve(checkLinkHeaders(homepageHtml)),
+    () => checkMcpServer(baseUrl),
+    () => checkRssFeed(homepageHtml, baseUrl),
+    () => Promise.resolve(checkContentSignals(robotsTxt)),
+    () => checkApiCatalog(baseUrl),
+    () => checkMarkdownForAgents(baseUrl),
+    () => Promise.resolve(checkWebMcp(homepageHtml)),
+  ];
+  const level2Tasks: Array<() => Promise<CheckResult>> = [
+    () => Promise.resolve(checkApiReadOps(spec)),
+    () => Promise.resolve(checkApiWriteOps(spec)),
+    () => Promise.resolve(checkApiPrimaryAction(spec)),
+    () => Promise.resolve(checkApiKeyAuth(spec)),
+    () => Promise.resolve(checkScopedApiKeys(spec)),
+    () => checkOpenIdConfig(baseUrl),
+    () => checkStructuredErrors(baseUrl),
+    () => Promise.resolve(checkAsyncOps(spec)),
+    () => Promise.resolve(checkIdempotency(spec)),
+    () => checkOAuthProtectedResource(baseUrl),
+    () => checkX402Payments(baseUrl),
+  ];
+  const level3Tasks: Array<() => Promise<CheckResult>> = [
+    () => Promise.resolve(checkSparseFields(spec)),
+    () => Promise.resolve(checkCursorPagination(spec)),
+    () => Promise.resolve(checkSearchFiltering(spec)),
+    () => Promise.resolve(checkBulkOps(spec)),
+    () => checkRateLimitHeaders(baseUrl),
+    () => checkCachingHeaders(baseUrl),
+    () => checkMcpToolQuality(baseUrl),
+  ];
+  const level4Tasks: Array<() => Promise<CheckResult>> = [
+    () => Promise.resolve(checkGooglebotAllowed(robotsTxt)),
+    () => Promise.resolve(checkGoogleExtendedPolicy(robotsTxt)),
+    () => Promise.resolve(checkHomepageIndexable(homepageHtml, xRobotsTag)),
+    () => checkSitemapPresent(baseUrl, robotsTxt),
+    () => checkHttps(baseUrl),
+    () => Promise.resolve(checkMobileViewport(homepageHtml)),
+    () => Promise.resolve(checkJsonLdPresent(homepageHtml)),
+    () => Promise.resolve(checkEntitySchema(homepageHtml)),
+    () => Promise.resolve(checkCanonicalUrl(homepageHtml, baseUrl)),
+    () => Promise.resolve(checkHeadingHierarchy(homepageHtml)),
+    () => Promise.resolve(checkImageAltCoverage(homepageHtml)),
+    () => Promise.resolve(checkSubstantiveContent(homepageHtml)),
+    () => Promise.resolve(checkStructuredDataQuality(homepageHtml)),
+    () => Promise.resolve(checkEntityCoverage(homepageHtml)),
+    () => Promise.resolve(checkContentFreshness(homepageHtml)),
+  ];
+
+  const allTasks = [...level1BaseTasks, ...level2Tasks, ...level3Tasks, ...level4Tasks];
+
+  // Level 5 (Agent-Native) runs concurrently with the pool. It reuses the already-
+  // fetched OpenAPI spec for 5.6 and sequences its own card-fetch → probe internally.
+  const [flat, level5] = await Promise.all([
+    runWithConcurrency(allTasks, CHECK_CONCURRENCY),
+    runDeepChecks(baseUrl, spec),
   ]);
+
+  let offset = 0;
+  const level1Base = flat.slice(offset, (offset += level1BaseTasks.length));
+  const level2 = flat.slice(offset, (offset += level2Tasks.length));
+  const level3 = flat.slice(offset, (offset += level3Tasks.length));
+  const level4 = flat.slice(offset, (offset += level4Tasks.length));
+
+  // Token efficiency (last Level-1 check) depends on the other Level-1 results, so
+  // it is computed after the pool resolves and appended — unchanged ordering.
   const tokenEfficiency = checkPageTokenEfficiency(homepageHtml, level1Base);
   const level1 = [...level1Base, tokenEfficiency];
-
-  // Level 2 checks
-  const level2 = await Promise.all([
-    Promise.resolve(checkApiReadOps(spec)),
-    Promise.resolve(checkApiWriteOps(spec)),
-    Promise.resolve(checkApiPrimaryAction(spec)),
-    Promise.resolve(checkApiKeyAuth(spec)),
-    Promise.resolve(checkScopedApiKeys(spec)),
-    checkOpenIdConfig(baseUrl),
-    checkStructuredErrors(baseUrl),
-    Promise.resolve(checkAsyncOps(spec)),
-    Promise.resolve(checkIdempotency(spec)),
-    checkOAuthProtectedResource(baseUrl),
-    checkX402Payments(baseUrl),
-  ]);
-
-  // Level 3 checks
-  const level3 = await Promise.all([
-    Promise.resolve(checkSparseFields(spec)),
-    Promise.resolve(checkCursorPagination(spec)),
-    Promise.resolve(checkSearchFiltering(spec)),
-    Promise.resolve(checkBulkOps(spec)),
-    checkRateLimitHeaders(baseUrl),
-    checkCachingHeaders(baseUrl),
-    checkMcpToolQuality(baseUrl),
-  ]);
-
-  // Level 4: Indexable
-  const level4 = await Promise.all([
-    Promise.resolve(checkGooglebotAllowed(robotsTxt)),
-    Promise.resolve(checkGoogleExtendedPolicy(robotsTxt)),
-    Promise.resolve(checkHomepageIndexable(homepageHtml, xRobotsTag)),
-    checkSitemapPresent(baseUrl, robotsTxt),
-    checkHttps(baseUrl),
-    Promise.resolve(checkMobileViewport(homepageHtml)),
-    Promise.resolve(checkJsonLdPresent(homepageHtml)),
-    Promise.resolve(checkEntitySchema(homepageHtml)),
-    Promise.resolve(checkCanonicalUrl(homepageHtml, baseUrl)),
-    Promise.resolve(checkHeadingHierarchy(homepageHtml)),
-    Promise.resolve(checkImageAltCoverage(homepageHtml)),
-    Promise.resolve(checkSubstantiveContent(homepageHtml)),
-    Promise.resolve(checkStructuredDataQuality(homepageHtml)),
-    Promise.resolve(checkEntityCoverage(homepageHtml)),
-    Promise.resolve(checkContentFreshness(homepageHtml)),
-  ]);
-
-  // Level 5: Agent-Native — declaration (agent-card / OpenAPI) + live endpoint probe.
-  // Reuses the already-fetched OpenAPI spec for 5.6 so it isn't fetched twice.
-  const level5 = await runDeepChecks(baseUrl, spec);
 
   return [...level1, ...level2, ...level3, ...level4, ...level5];
 }

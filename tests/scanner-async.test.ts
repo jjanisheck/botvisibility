@@ -14,6 +14,8 @@ import {
   checkRssFeed,
   checkMcpToolQuality,
   checkPageTokenEfficiency,
+  runAllChecks,
+  runWithConcurrency,
 } from '../src/scanner.js';
 
 // Generic fetch mock: each test supplies its own handler(url, init) => Response.
@@ -566,5 +568,58 @@ describe('checkOpenIdConfig', () => {
     mockFetch(async () => notFound());
     const r = await checkOpenIdConfig('https://example.com');
     expect(r.status).toBe('na');
+  });
+});
+
+// --- orchestration: runAllChecks wiring (characterization) ---
+
+describe('runAllChecks', () => {
+  it('runs all 58 checks across 5 levels, grouped in canonical level order with unique ids', async () => {
+    // Everything 404/empty — we assert wiring (count, ordering, uniqueness), not per-check verdicts.
+    mockFetch(async () => text('not found', 404));
+    const results = await runAllChecks('https://example.com');
+
+    expect(results).toHaveLength(58);
+
+    const ids = results.map((r) => r.id);
+    expect(new Set(ids).size).toBe(58); // no duplicate ids
+
+    const levels = results.map((r) => r.level);
+    expect(results[0].level).toBe(1);
+    expect(results[results.length - 1].level).toBe(5);
+    // level blocks stay contiguous and ascending (1…1,2…2,3…3,4…4,5…5)
+    expect([...levels].sort((a, b) => a - b)).toEqual(levels);
+    expect(new Set(levels)).toEqual(new Set([1, 2, 3, 4, 5]));
+  });
+});
+
+// --- bounded concurrency pool (powers runAllChecks overlap) ---
+
+describe('runWithConcurrency', () => {
+  it('preserves input→output order regardless of completion timing', async () => {
+    const tasks = [
+      () => new Promise<number>((r) => setTimeout(() => r(1), 15)),
+      () => new Promise<number>((r) => setTimeout(() => r(2), 1)),
+      () => new Promise<number>((r) => setTimeout(() => r(3), 8)),
+    ];
+    expect(await runWithConcurrency(tasks, 2)).toEqual([1, 2, 3]);
+  });
+
+  it('never exceeds the concurrency limit', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const make = () => async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      return 0;
+    };
+    await runWithConcurrency(Array.from({ length: 10 }, make), 3);
+    expect(peak).toBe(3); // reaches, but never passes, the cap
+  });
+
+  it('returns [] for an empty task list', async () => {
+    expect(await runWithConcurrency([], 4)).toEqual([]);
   });
 });

@@ -838,84 +838,96 @@ export function checkBulkOps(spec: ParsedOpenApiSpec | null): CheckResult {
   };
 }
 
-export async function checkRateLimitHeaders(baseUrl: string): Promise<CheckResult> {
-  try {
-    const res = await timedFetch(baseUrl, { method: 'GET' });
-
-    const rateLimitHeaders = [
-      'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset',
-      'ratelimit-limit', 'ratelimit-remaining', 'retry-after'
-    ];
-
-    const foundHeaders: string[] = [];
-    for (const header of rateLimitHeaders) {
-      if (res.headers.get(header)) {
-        foundHeaders.push(header);
-      }
-    }
-
-    if (foundHeaders.length >= 2) {
-      return {
-        id: '3.5', name: 'Rate Limit Headers', passed: true, status: 'pass', level: 3, category: 'Optimized', autoDetectable: true,
-        message: 'Rate limit headers present',
-        details: `Found: ${foundHeaders.join(', ')}`
-      };
-    } else if (foundHeaders.length === 1) {
-      return {
-        id: '3.5', name: 'Rate Limit Headers', passed: false, status: 'partial', level: 3, category: 'Optimized', autoDetectable: true,
-        message: 'Partial rate limit headers',
-        details: `Found: ${foundHeaders.join(', ')}`,
-        recommendation: 'Add X-RateLimit-Remaining and X-RateLimit-Reset headers'
-      };
-    }
-
-    return {
-      id: '3.5', name: 'Rate Limit Headers', passed: false, status: 'fail', level: 3, category: 'Optimized', autoDetectable: true,
-      message: 'No rate limit headers',
-      recommendation: 'Add X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset headers.'
-    };
-  } catch {
+// Pure evaluation of rate-limit headers (3.5). `null` headers (the homepage fetch
+// failed) → na, matching the network-error behavior of the fetch wrapper.
+export function evaluateRateLimitHeaders(headers: Headers | null): CheckResult {
+  if (!headers) {
     return {
       id: '3.5', name: 'Rate Limit Headers', passed: false, status: 'na', level: 3, category: 'Optimized', autoDetectable: true,
       message: 'Could not check rate limit headers'
     };
   }
+
+  const rateLimitHeaders = [
+    'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset',
+    'ratelimit-limit', 'ratelimit-remaining', 'retry-after'
+  ];
+
+  const foundHeaders = rateLimitHeaders.filter(h => headers.get(h));
+
+  if (foundHeaders.length >= 2) {
+    return {
+      id: '3.5', name: 'Rate Limit Headers', passed: true, status: 'pass', level: 3, category: 'Optimized', autoDetectable: true,
+      message: 'Rate limit headers present',
+      details: `Found: ${foundHeaders.join(', ')}`
+    };
+  } else if (foundHeaders.length === 1) {
+    return {
+      id: '3.5', name: 'Rate Limit Headers', passed: false, status: 'partial', level: 3, category: 'Optimized', autoDetectable: true,
+      message: 'Partial rate limit headers',
+      details: `Found: ${foundHeaders.join(', ')}`,
+      recommendation: 'Add X-RateLimit-Remaining and X-RateLimit-Reset headers'
+    };
+  }
+
+  return {
+    id: '3.5', name: 'Rate Limit Headers', passed: false, status: 'fail', level: 3, category: 'Optimized', autoDetectable: true,
+    message: 'No rate limit headers',
+    recommendation: 'Add X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset headers.'
+  };
+}
+
+export async function checkRateLimitHeaders(baseUrl: string): Promise<CheckResult> {
+  try {
+    const res = await timedFetch(baseUrl, { method: 'GET' });
+    return evaluateRateLimitHeaders(res.headers);
+  } catch {
+    return evaluateRateLimitHeaders(null);
+  }
+}
+
+// Pure evaluation of caching headers (3.6). `null` headers → na.
+export function evaluateCachingHeaders(headers: Headers | null): CheckResult {
+  if (!headers) {
+    return {
+      id: '3.6', name: 'Caching Headers', passed: false, status: 'na', level: 3, category: 'Optimized', autoDetectable: true,
+      message: 'Could not check caching headers'
+    };
+  }
+
+  const etag = headers.get('etag');
+  const lastModified = headers.get('last-modified');
+  const cacheControl = headers.get('cache-control');
+
+  const cachingSignals = [etag, lastModified, cacheControl].filter(Boolean);
+
+  if (cachingSignals.length >= 2) {
+    return {
+      id: '3.6', name: 'Caching Headers', passed: true, status: 'pass', level: 3, category: 'Optimized', autoDetectable: true,
+      message: 'Caching headers present',
+      details: `ETag: ${etag ? 'yes' : 'no'}, Cache-Control: ${cacheControl || 'no'}, Last-Modified: ${lastModified ? 'yes' : 'no'}`
+    };
+  } else if (cachingSignals.length === 1) {
+    return {
+      id: '3.6', name: 'Caching Headers', passed: true, status: 'partial', level: 3, category: 'Optimized', autoDetectable: true,
+      message: 'Basic caching support',
+      recommendation: 'Add ETag headers alongside Cache-Control for conditional requests support.'
+    };
+  }
+
+  return {
+    id: '3.6', name: 'Caching Headers', passed: false, status: 'fail', level: 3, category: 'Optimized', autoDetectable: true,
+    message: 'No caching headers',
+    recommendation: 'Add ETag or Last-Modified headers to enable 304 responses and reduce token cost.'
+  };
 }
 
 export async function checkCachingHeaders(baseUrl: string): Promise<CheckResult> {
   try {
     const res = await timedFetch(baseUrl, { method: 'GET' });
-
-    const etag = res.headers.get('etag');
-    const lastModified = res.headers.get('last-modified');
-    const cacheControl = res.headers.get('cache-control');
-
-    const cachingSignals = [etag, lastModified, cacheControl].filter(Boolean);
-
-    if (cachingSignals.length >= 2) {
-      return {
-        id: '3.6', name: 'Caching Headers', passed: true, status: 'pass', level: 3, category: 'Optimized', autoDetectable: true,
-        message: 'Caching headers present',
-        details: `ETag: ${etag ? 'yes' : 'no'}, Cache-Control: ${cacheControl || 'no'}, Last-Modified: ${lastModified ? 'yes' : 'no'}`
-      };
-    } else if (cachingSignals.length === 1) {
-      return {
-        id: '3.6', name: 'Caching Headers', passed: true, status: 'partial', level: 3, category: 'Optimized', autoDetectable: true,
-        message: 'Basic caching support',
-        recommendation: 'Add ETag headers alongside Cache-Control for conditional requests support.'
-      };
-    }
-
-    return {
-      id: '3.6', name: 'Caching Headers', passed: false, status: 'fail', level: 3, category: 'Optimized', autoDetectable: true,
-      message: 'No caching headers',
-      recommendation: 'Add ETag or Last-Modified headers to enable 304 responses and reduce token cost.'
-    };
+    return evaluateCachingHeaders(res.headers);
   } catch {
-    return {
-      id: '3.6', name: 'Caching Headers', passed: false, status: 'na', level: 3, category: 'Optimized', autoDetectable: true,
-      message: 'Could not check caching headers'
-    };
+    return evaluateCachingHeaders(null);
   }
 }
 
@@ -1012,8 +1024,8 @@ async function discoverMcpServer(baseUrl: string): Promise<McpDiscoveryResult> {
   return { found: false };
 }
 
-export async function checkMcpServer(baseUrl: string): Promise<CheckResult> {
-  const result = await discoverMcpServer(baseUrl);
+export async function checkMcpServer(baseUrl: string, discovery?: Promise<McpDiscoveryResult>): Promise<CheckResult> {
+  const result = await (discovery ?? discoverMcpServer(baseUrl));
   if (result.found && result.body) {
     return {
       id: '1.12', name: 'MCP Server', passed: true, status: 'pass', level: 1, category: 'Discoverable', autoDetectable: true,
@@ -1038,8 +1050,8 @@ export async function checkMcpServer(baseUrl: string): Promise<CheckResult> {
 
 // --- MCP Tool Quality (3.7) ---
 
-export async function checkMcpToolQuality(baseUrl: string): Promise<CheckResult> {
-  const discovery = await discoverMcpServer(baseUrl);
+export async function checkMcpToolQuality(baseUrl: string, sharedDiscovery?: Promise<McpDiscoveryResult>): Promise<CheckResult> {
+  const discovery = await (sharedDiscovery ?? discoverMcpServer(baseUrl));
   if (!discovery.found || !discovery.body) {
     return {
       id: '3.7', name: 'MCP Tool Quality', passed: false, status: 'na', level: 3, category: 'Optimized', autoDetectable: true,
@@ -1193,12 +1205,14 @@ export async function fetchRobotsTxt(baseUrl: string): Promise<string | null> {
   } catch { return null; }
 }
 
-async function fetchHomepageData(baseUrl: string): Promise<{ html: string | null; xRobotsTag: string | null }> {
+async function fetchHomepageData(baseUrl: string): Promise<{ html: string | null; xRobotsTag: string | null; headers: Headers | null }> {
   try {
     const res = await timedFetch(baseUrl, { headers: { 'Accept': 'text/html' } });
-    if (res.ok) return { html: await res.text(), xRobotsTag: res.headers.get('x-robots-tag') };
-    return { html: null, xRobotsTag: null };
-  } catch { return { html: null, xRobotsTag: null }; }
+    // Capture the response headers either way so header-only checks (rate-limit,
+    // caching) can reuse this single homepage GET instead of refetching the root.
+    if (res.ok) return { html: await res.text(), xRobotsTag: res.headers.get('x-robots-tag'), headers: res.headers };
+    return { html: null, xRobotsTag: null, headers: res.headers };
+  } catch { return { html: null, xRobotsTag: null, headers: null }; }
 }
 
 function parseRobotsBlocks(robotsTxt: string): Array<{ agents: string[]; disallows: string[]; allows: string[] }> {
@@ -2021,6 +2035,10 @@ export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
   const homepageHtml = homepage.html;
   const xRobotsTag = homepage.xRobotsTag;
 
+  // MCP discovery is needed by both 1.12 (MCP Server) and 3.7 (MCP Tool Quality);
+  // run it once and share the result so the candidate-path walk isn't repeated.
+  const mcpDiscovery = discoverMcpServer(baseUrl);
+
   // All Level 1-4 checks are independent, so they run together in one bounded pool
   // (CHECK_CONCURRENCY) rather than a Promise.all per level awaited in series — the
   // levels now overlap, cutting wall-time from "sum of each level's slowest check"
@@ -2038,7 +2056,7 @@ export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
     () => checkAiSiteProfile(baseUrl),
     () => checkSkillsIndex(baseUrl),
     () => Promise.resolve(checkLinkHeaders(homepageHtml)),
-    () => checkMcpServer(baseUrl),
+    () => checkMcpServer(baseUrl, mcpDiscovery),
     () => checkRssFeed(homepageHtml, baseUrl),
     () => Promise.resolve(checkContentSignals(robotsTxt)),
     () => checkApiCatalog(baseUrl),
@@ -2063,9 +2081,9 @@ export async function runAllChecks(baseUrl: string): Promise<CheckResult[]> {
     () => Promise.resolve(checkCursorPagination(spec)),
     () => Promise.resolve(checkSearchFiltering(spec)),
     () => Promise.resolve(checkBulkOps(spec)),
-    () => checkRateLimitHeaders(baseUrl),
-    () => checkCachingHeaders(baseUrl),
-    () => checkMcpToolQuality(baseUrl),
+    () => Promise.resolve(evaluateRateLimitHeaders(homepage.headers)),
+    () => Promise.resolve(evaluateCachingHeaders(homepage.headers)),
+    () => checkMcpToolQuality(baseUrl, mcpDiscovery),
   ];
   const level4Tasks: Array<() => Promise<CheckResult>> = [
     () => Promise.resolve(checkGooglebotAllowed(robotsTxt)),

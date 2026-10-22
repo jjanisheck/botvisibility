@@ -16,6 +16,8 @@ import {
   checkPageTokenEfficiency,
   runAllChecks,
   runWithConcurrency,
+  evaluateRateLimitHeaders,
+  evaluateCachingHeaders,
 } from '../src/scanner.js';
 
 // Generic fetch mock: each test supplies its own handler(url, init) => Response.
@@ -621,5 +623,61 @@ describe('runWithConcurrency', () => {
 
   it('returns [] for an empty task list', async () => {
     expect(await runWithConcurrency([], 4)).toEqual([]);
+  });
+});
+
+// --- fetch dedup: pure header evaluators + shared resources in runAllChecks ---
+
+describe('evaluateRateLimitHeaders / evaluateCachingHeaders (pure)', () => {
+  it('rate-limit: na on null, fail on none, partial on one, pass on two', () => {
+    expect(evaluateRateLimitHeaders(null).status).toBe('na');
+    expect(evaluateRateLimitHeaders(new Headers()).status).toBe('fail');
+    expect(evaluateRateLimitHeaders(new Headers({ 'x-ratelimit-limit': '100' })).status).toBe('partial');
+    expect(
+      evaluateRateLimitHeaders(new Headers({ 'x-ratelimit-limit': '100', 'x-ratelimit-remaining': '99' })).status
+    ).toBe('pass');
+  });
+
+  it('caching: na on null, fail on none, partial on one, pass on two', () => {
+    expect(evaluateCachingHeaders(null).status).toBe('na');
+    expect(evaluateCachingHeaders(new Headers()).status).toBe('fail');
+    expect(evaluateCachingHeaders(new Headers({ etag: 'W/"x"' })).status).toBe('partial');
+    expect(
+      evaluateCachingHeaders(new Headers({ etag: 'W/"x"', 'cache-control': 'max-age=60' })).status
+    ).toBe('pass');
+  });
+});
+
+describe('runAllChecks — resource dedup', () => {
+  it('discovers the MCP server once and feeds both 1.12 and 3.7 from the homepage/shared fetch', async () => {
+    const urls: string[] = [];
+    mockFetch(async (url) => {
+      urls.push(url);
+      if (url === 'https://example.com' || url === 'https://example.com/') {
+        // Single homepage GET supplies rate-limit (3.5) + caching (3.6) headers.
+        return text('<html></html>', 200, {
+          'x-ratelimit-limit': '100',
+          'x-ratelimit-remaining': '99',
+          etag: 'W/"abc"',
+          'cache-control': 'max-age=60',
+        });
+      }
+      if (url.endsWith('/.well-known/mcp.json')) {
+        return json({ tools: [{ name: 'scan', description: 'scan a url for agent readiness', inputSchema: { type: 'object' } }] });
+      }
+      return text('not found', 404);
+    });
+
+    const results = await runAllChecks('https://example.com');
+    const byId = (id: string) => results.find((r) => r.id === id)!;
+
+    // MCP discovery walked exactly once (shared), not once per dependent check.
+    expect(urls.filter((u) => u.endsWith('/.well-known/mcp.json'))).toHaveLength(1);
+    expect(byId('1.12').status).toBe('pass'); // MCP server found
+    expect(byId('3.7').status).not.toBe('na'); // tool-quality got the shared discovery
+
+    // Header-only checks consumed the homepage response headers.
+    expect(byId('3.5').status).toBe('pass'); // rate-limit headers
+    expect(byId('3.6').status).toBe('pass'); // caching headers
   });
 });

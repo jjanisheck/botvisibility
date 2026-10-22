@@ -194,11 +194,16 @@ export async function fetchOpenApiSpec(baseUrl: string): Promise<ParsedOpenApiSp
 async function timedFetch(url: string, opts: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  // Keep the abort timer armed past header receipt so it also covers the caller's
+  // body read (res.text()/res.json()); clearing it here — as a finally would — lets
+  // a stalled response body hang the scan indefinitely. unref() so a timer still
+  // pending after a successful read never keeps the CLI process alive.
+  (timeout as { unref?: () => void }).unref?.();
   try {
-    const res = await fetch(url, { ...opts, signal: controller.signal });
-    return res;
-  } finally {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } catch (e) {
     clearTimeout(timeout);
+    throw e;
   }
 }
 
@@ -341,6 +346,58 @@ export function checkOpenApiSpecFromParsed(spec: ParsedOpenApiSpec | null): Chec
   };
 }
 
+// AI crawler user-agent tokens (lowercased) we treat as relevant to check 1.4.
+const AI_CRAWLER_AGENTS = ['gptbot', 'claudebot', 'google-extended', 'anthropic', 'openai'];
+
+// A robots block blocks the whole site if it Disallows the root ("/" or "/*")
+// and does not countermand it with an equally-broad Allow.
+function blockDisallowsRoot(block: { disallows: string[]; allows: string[] }): boolean {
+  const blocksRoot = block.disallows.some(d => d === '/' || d === '/*');
+  const allowsRoot = block.allows.some(a => a === '/' || a === '/*');
+  return blocksRoot && !allowsRoot;
+}
+
+// Pure evaluation of robots.txt against AI-crawler policy (check 1.4). Block-aware:
+// an agent only counts as blocked when ITS OWN user-agent group disallows the whole
+// site — a Disallow on a subpath, or a Disallow in a different group, does not count.
+export function evaluateRobotsAiPolicy(robotsTxt: string, foundAt: string): CheckResult {
+  const blocks = parseRobotsBlocks(robotsTxt);
+
+  const blockedAgents = AI_CRAWLER_AGENTS.filter(agent =>
+    blocks.some(b => b.agents.includes(agent) && blockDisallowsRoot(b))
+  );
+
+  // /api blocked for everyone (*) or for an AI crawler specifically.
+  const apiBlocked = blocks.some(b => {
+    const relevant = b.agents.includes('*') || AI_CRAWLER_AGENTS.some(a => b.agents.includes(a));
+    return relevant && b.disallows.some(d => {
+      const p = d.toLowerCase();
+      return p === '/api' || p === '/api/' || p === '/api*' || p.startsWith('/api/');
+    });
+  });
+
+  if (blockedAgents.length === 0 && !apiBlocked) {
+    return {
+      id: '1.4', name: 'robots.txt AI Policy', passed: true, status: 'pass', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: 'robots.txt allows AI crawlers',
+      foundAt
+    };
+  }
+  if (blockedAgents.length > 0) {
+    return {
+      id: '1.4', name: 'robots.txt AI Policy', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
+      message: 'robots.txt blocks AI crawlers',
+      details: `Blocked: ${blockedAgents.join(', ')}`,
+      recommendation: 'Remove site-wide Disallow rules for AI agents (GPTBot, ClaudeBot, Google-Extended)'
+    };
+  }
+  return {
+    id: '1.4', name: 'robots.txt AI Policy', passed: false, status: 'partial', level: 1, category: 'Discoverable', autoDetectable: true,
+    message: 'robots.txt may block API paths',
+    recommendation: 'Ensure /api and /docs paths are not blocked for AI crawlers'
+  };
+}
+
 export async function checkRobotsTxt(baseUrl: string): Promise<CheckResult> {
   const url = `${baseUrl}/robots.txt`;
   try {
@@ -349,36 +406,7 @@ export async function checkRobotsTxt(baseUrl: string): Promise<CheckResult> {
     });
 
     if (res.ok) {
-      const text = await res.text().then(t => t.toLowerCase());
-
-      const aiAgents = ['gptbot', 'claudebot', 'googlebot-extended', 'anthropic', 'openai'];
-      const blockedAgents = aiAgents.filter(agent => {
-        const regex = new RegExp(`user-agent:\\s*${agent}[\\s\\S]*?disallow:\\s*/`, 'i');
-        return regex.test(text);
-      });
-
-      const allowsApi = !text.includes('disallow: /api');
-
-      if (blockedAgents.length === 0 && allowsApi) {
-        return {
-          id: '1.4', name: 'robots.txt AI Policy', passed: true, status: 'pass', level: 1, category: 'Discoverable', autoDetectable: true,
-          message: 'robots.txt allows AI crawlers',
-          foundAt: url
-        };
-      } else if (blockedAgents.length > 0) {
-        return {
-          id: '1.4', name: 'robots.txt AI Policy', passed: false, status: 'fail', level: 1, category: 'Discoverable', autoDetectable: true,
-          message: 'robots.txt blocks AI crawlers',
-          details: `Blocked: ${blockedAgents.join(', ')}`,
-          recommendation: 'Remove Disallow rules for AI agents (GPTBot, ClaudeBot)'
-        };
-      } else {
-        return {
-          id: '1.4', name: 'robots.txt AI Policy', passed: false, status: 'partial', level: 1, category: 'Discoverable', autoDetectable: true,
-          message: 'robots.txt may block API paths',
-          recommendation: 'Ensure /api and /docs paths are not blocked for AI crawlers'
-        };
-      }
+      return evaluateRobotsAiPolicy(await res.text(), url);
     }
 
     return {

@@ -128,6 +128,29 @@ describe('checkRobotsTxt', () => {
     const r = await checkRobotsTxt('https://example.com');
     expect(r.status).toBe('pass');
   });
+
+  // --- regression: block-aware AI policy (was a naive cross-block regex) ---
+
+  it('passes when an AI agent is allowed site-wide but a subpath is disallowed', async () => {
+    // Disallow: /admin is NOT a full-site block — GPTBot is still allowed to crawl.
+    mockFetch(async () => text('User-agent: GPTBot\nAllow: /\nDisallow: /admin\n'));
+    const r = await checkRobotsTxt('https://example.com');
+    expect(r.status).toBe('pass');
+  });
+
+  it('does not let one user-agent block leak a Disallow from a later block', async () => {
+    // GPTBot block only allows; the Disallow belongs to the wildcard block below it.
+    mockFetch(async () => text('User-agent: GPTBot\nAllow: /\n\nUser-agent: *\nDisallow: /private\n'));
+    const r = await checkRobotsTxt('https://example.com');
+    expect(r.status).toBe('pass');
+  });
+
+  it('fails when Google-Extended is fully disallowed (correct token)', async () => {
+    mockFetch(async () => text('User-agent: Google-Extended\nDisallow: /\n'));
+    const r = await checkRobotsTxt('https://example.com');
+    expect(r.status).toBe('fail');
+    expect(r.details).toContain('google-extended');
+  });
 });
 
 // --- 3. CORS fallback from OPTIONS to GET ---

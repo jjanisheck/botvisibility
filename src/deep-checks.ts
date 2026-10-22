@@ -61,12 +61,46 @@ async function probeBody(url: string): Promise<(ProbeResult & { kind: 'response'
   }
 }
 
+// Hosts we refuse to probe when an (untrusted) agent-card declares a cross-origin
+// absolute URL — loopback, link-local/metadata, and RFC1918/ULA private ranges.
+// Prevents SSRF: a public site's agent-card pointing a probe at 169.254.169.254,
+// localhost, 10.x, etc.
+function isPrivateHost(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+  if (h === 'localhost' || h.endsWith('.localhost')) return true;
+  if (h === '::1' || h === '::') return true;                 // IPv6 loopback / unspecified
+  if (h.startsWith('fe80:')) return true;                     // IPv6 link-local
+  if (h.startsWith('fc') || h.startsWith('fd')) return true;  // IPv6 unique-local (fc00::/7)
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a === 0 || a === 127 || a === 10) return true;        // this-host / loopback / private
+    if (a === 169 && b === 254) return true;                  // link-local incl. cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return true;         // private
+    if (a === 192 && b === 168) return true;                  // private
+    if (a === 100 && b >= 64 && b <= 127) return true;        // CGNAT (RFC6598)
+  }
+  return false;
+}
+
+// Resolve a declared path/URL against the scan origin. Relative paths and same-origin
+// absolute URLs are always allowed (that's the target the user asked us to scan). A
+// cross-origin absolute URL is allowed only if it is http(s) to a non-private host;
+// otherwise we return null and the caller reports the check as failed (SSRF guard).
 function resolve(pathOrUrl: string, origin: string): string | null {
+  let base: URL;
+  let u: URL;
   try {
-    return new URL(pathOrUrl, origin).toString();
+    base = new URL(origin);
+    u = new URL(pathOrUrl, origin);
   } catch {
     return null;
   }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  if (u.origin === base.origin) return u.toString();
+  if (isPrivateHost(u.hostname)) return null;
+  return u.toString();
 }
 
 // --- result builders --------------------------------------------------------

@@ -77,6 +77,48 @@ describe('fetchAgentCapabilities', () => {
   });
 });
 
+describe('runDeepChecks — SSRF guard on target-declared URLs', () => {
+  it('refuses to probe a link-local/metadata sandbox URL declared by the agent-card', async () => {
+    const seen: string[] = [];
+    mockFetch((url) => {
+      seen.push(url);
+      if (url.includes('/.well-known/agent-card.json'))
+        return json({ capabilities: { sandbox: { baseUrl: 'http://169.254.169.254/latest/meta-data/' } } });
+      return text('not found', 404);
+    });
+    const results = await runDeepChecks(BASE, null);
+    expect(byId(results, '5.5').status).toBe('fail');
+    expect(seen.some((u) => u.includes('169.254.169.254'))).toBe(false);
+  });
+
+  it('refuses to probe a localhost intent endpoint declared by the agent-card', async () => {
+    const seen: string[] = [];
+    mockFetch((url) => {
+      seen.push(url);
+      if (url.includes('/.well-known/agent-card.json'))
+        return json({ capabilities: { intentEndpoints: ['http://localhost:9999/secret'] } });
+      return text('not found', 404);
+    });
+    const results = await runDeepChecks(BASE, null);
+    expect(byId(results, '5.1').status).toBe('fail');
+    expect(seen.some((u) => u.includes('localhost:9999'))).toBe(false);
+  });
+
+  it('still probes a legitimate public cross-origin sandbox URL', async () => {
+    const seen: string[] = [];
+    mockFetch((url) => {
+      seen.push(url);
+      if (url.includes('/.well-known/agent-card.json'))
+        return json({ capabilities: { sandbox: { baseUrl: 'https://sandbox.example.net/' } } });
+      if (url.startsWith('https://sandbox.example.net')) return text('ok', 200);
+      return text('not found', 404);
+    });
+    const results = await runDeepChecks(BASE, null);
+    expect(byId(results, '5.5').status).toBe('pass');
+    expect(seen.some((u) => u.startsWith('https://sandbox.example.net'))).toBe(true);
+  });
+});
+
 describe('runDeepChecks — fully-declared, fully-reachable site scores 7/7', () => {
   it('passes all seven Level-5 checks', async () => {
     mockFetch((url) => {

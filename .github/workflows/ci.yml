@@ -11,7 +11,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [18, 20, 22]
+        # Patched Node lines only — 18 and 20 are EOL and did NOT receive fixes
+        # for the Oct 2026 security releases (CVE-2026-111497 Brotli RCE et al.).
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
